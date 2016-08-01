@@ -909,6 +909,7 @@ int __init platform_bus_init(void)
 	error =  bus_register(&platform_bus_type);
 	if (error)
 		device_unregister(&platform_bus);
+	of_platform_register_reconfig_notifier();
 	return error;
 }
 
@@ -950,9 +951,7 @@ int __init early_platform_driver_register(struct early_platform_driver *epdrv,
 	char *tmp;
 	int n;
 
-	/* Simply add the driver to the end of the global list.
-	 * Drivers will by default be put on the list in compiled-in order.
-	 */
+	
 	if (!epdrv->list.next) {
 		INIT_LIST_HEAD(&epdrv->list);
 		list_add_tail(&epdrv->list, &early_platform_driver_list);

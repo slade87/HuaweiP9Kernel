@@ -161,10 +161,13 @@ struct cpuidle_attr {
 	ssize_t (*store)(struct cpuidle_device *, const char *, size_t count);
 };
 
+/*lint -e750 -esym(750,*) */
 #define define_one_ro(_name, show) \
 	static struct cpuidle_attr attr_##_name = __ATTR(_name, 0444, show, NULL)
 #define define_one_rw(_name, show, store) \
 	static struct cpuidle_attr attr_##_name = __ATTR(_name, 0644, show, store)
+/*lint +e750 +esym(750,*) */
+
 
 #define kobj_to_cpuidledev(k) container_of(k, struct cpuidle_device, kobj)
 #define attr_to_cpuidleattr(a) container_of(a, struct cpuidle_attr, attr)

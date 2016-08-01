@@ -160,7 +160,7 @@ struct fb_fix_screeninfo {
 	__u32 smem_len;			/* Length of frame buffer mem */
 	__u32 type;			/* see FB_TYPE_*		*/
 	__u32 type_aux;			/* Interleave for interleaved Planes */
-	__u32 visual;			/* see FB_VISUAL_*		*/ 
+	__u32 visual;			/* see FB_VISUAL_*		*/
 	__u16 xpanstep;			/* zero if no hardware panning  */
 	__u16 ypanstep;			/* zero if no hardware panning  */
 	__u16 ywrapstep;		/* zero if no hardware ywrap    */
@@ -187,8 +187,8 @@ struct fb_fix_screeninfo {
 struct fb_bitfield {
 	__u32 offset;			/* beginning of bitfield	*/
 	__u32 length;			/* length of bitfield		*/
-	__u32 msb_right;		/* != 0 : Most significant bit is */ 
-					/* right */ 
+	__u32 msb_right;		/* != 0 : Most significant bit is */
+					/* right */
 };
 
 #define FB_NONSTD_HAM		1	/* Hold-And-Modify (HAM)        */
@@ -226,6 +226,11 @@ struct fb_bitfield {
 #define FB_VMODE_SMOOTH_XPAN	512	/* smooth xpan possible (internally used) */
 #define FB_VMODE_CONUPDATE	512	/* don't update x/yoffset	*/
 
+#define FB_FLAG_DE_HIGH		1	/* data enable high active */
+#define FB_FLAG_DE_LOW		2	/* data enable low active */
+#define FB_FLAG_PIXDATA_POSEDGE	4	/* pixdata postive edge */
+#define FB_FLAG_PIXDATA_NEGEDGE	8	/* pixdata negative edge */
+
 /*
  * Display rotation support
  */
@@ -251,7 +256,7 @@ struct fb_var_screeninfo {
 	struct fb_bitfield red;		/* bitfield in fb mem if true color, */
 	struct fb_bitfield green;	/* else only length is significant */
 	struct fb_bitfield blue;
-	struct fb_bitfield transp;	/* transparency			*/	
+	struct fb_bitfield transp;	/* transparency			*/
 
 	__u32 nonstd;			/* != 0 Non standard pixel format */
 
@@ -394,9 +399,13 @@ struct fb_cursor {
 
 #ifdef CONFIG_FB_BACKLIGHT
 /* Settings for the generic backlight code */
+#ifdef CONFIG_BACKLIGHT_10000
+#define FB_BACKLIGHT_LEVELS	5000
+#define FB_BACKLIGHT_MAX	0x26E8
+#else
 #define FB_BACKLIGHT_LEVELS	128
 #define FB_BACKLIGHT_MAX	0xFF
 #endif
-
+#endif
 
 #endif /* _UAPI_LINUX_FB_H */

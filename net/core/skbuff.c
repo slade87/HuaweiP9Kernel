@@ -72,9 +72,12 @@
 #include <asm/uaccess.h>
 #include <trace/events/skb.h>
 #include <linux/highmem.h>
+#include <linux/atomic.h>
 
 struct kmem_cache *skbuff_head_cache __read_mostly;
 static struct kmem_cache *skbuff_fclone_cache __read_mostly;
+atomic_long_t naspg_nr = ATOMIC64_INIT(0);
+EXPORT_SYMBOL(naspg_nr);
 
 /**
  *	skb_panic - private function for out-of-line support
@@ -340,6 +343,7 @@ struct netdev_alloc_cache {
 };
 static DEFINE_PER_CPU(struct netdev_alloc_cache, netdev_alloc_cache);
 
+
 static void *__netdev_alloc_frag(unsigned int fragsz, gfp_t gfp_mask)
 {
 	struct netdev_alloc_cache *nc;
@@ -588,6 +592,10 @@ static void skb_release_all(struct sk_buff *skb)
 
 void __kfree_skb(struct sk_buff *skb)
 {
+	if(1 == skb->psh){
+		atomic_long_sub(1,&naspg_nr);
+	}
+
 	skb_release_all(skb);
 	kfree_skbmem(skb);
 }
@@ -609,6 +617,7 @@ void kfree_skb(struct sk_buff *skb)
 	else if (likely(!atomic_dec_and_test(&skb->users)))
 		return;
 	trace_kfree_skb(skb, __builtin_return_address(0));
+
 	__kfree_skb(skb);
 }
 EXPORT_SYMBOL(kfree_skb);
@@ -1257,15 +1266,7 @@ unsigned char *skb_put(struct sk_buff *skb, unsigned int len)
 }
 EXPORT_SYMBOL(skb_put);
 
-/**
- *	skb_push - add data to the start of a buffer
- *	@skb: buffer to use
- *	@len: amount of data to add
- *
- *	This function extends the used data area of the buffer at the buffer
- *	start. If this would exceed the total buffer headroom the kernel will
- *	panic. A pointer to the first byte of the extra data is returned.
- */
+
 unsigned char *skb_push(struct sk_buff *skb, unsigned int len)
 {
 	skb->data -= len;
@@ -1292,15 +1293,7 @@ unsigned char *skb_pull(struct sk_buff *skb, unsigned int len)
 }
 EXPORT_SYMBOL(skb_pull);
 
-/**
- *	skb_trim - remove end from a buffer
- *	@skb: buffer to alter
- *	@len: new length
- *
- *	Cut the length of a buffer down by removing data from the tail. If
- *	the buffer is already under the length specified it is not modified.
- *	The skb must be linear.
- */
+
 void skb_trim(struct sk_buff *skb, unsigned int len)
 {
 	if (skb->len > len)
@@ -3149,23 +3142,7 @@ int skb_to_sgvec(struct sk_buff *skb, struct scatterlist *sg, int offset, int le
 }
 EXPORT_SYMBOL_GPL(skb_to_sgvec);
 
-/**
- *	skb_cow_data - Check that a socket buffer's data buffers are writable
- *	@skb: The socket buffer to check.
- *	@tailbits: Amount of trailing space to be added
- *	@trailer: Returned pointer to the skb where the @tailbits space begins
- *
- *	Make sure that the data buffers attached to a socket buffer are
- *	writable. If they are not, private copies are made of the data buffers
- *	and the socket buffer is set to use these instead.
- *
- *	If @tailbits is given, make sure that there is space to write @tailbits
- *	bytes of data beyond current end of socket buffer.  @trailer will be
- *	set to point to the skb in which this space begins.
- *
- *	The number of scatterlist elements required to completely map the
- *	COW'd and extended socket buffer will be returned.
- */
+
 int skb_cow_data(struct sk_buff *skb, int tailbits, struct sk_buff **trailer)
 {
 	int copyflag;

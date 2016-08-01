@@ -1550,7 +1550,6 @@ void rtl8192_SetBWModeWorkItem(struct net_device *dev)
 	switch(priv->CurrentChannelBW)
 	{
 		case HT_CHANNEL_WIDTH_20:
-			// Add by Vivi 20071119
 			rtl8192_setBBreg(dev, rFPGA0_RFMOD, bRFMOD, 0x0);
 			rtl8192_setBBreg(dev, rFPGA1_RFMOD, bRFMOD, 0x0);
 			rtl8192_setBBreg(dev, rFPGA0_AnalogParameter1, 0x00100000, 1);
@@ -1580,7 +1579,6 @@ void rtl8192_SetBWModeWorkItem(struct net_device *dev)
 
 			break;
 		case HT_CHANNEL_WIDTH_20_40:
-			// Add by Vivi 20071119
 			rtl8192_setBBreg(dev, rFPGA0_RFMOD, bRFMOD, 0x1);
 			rtl8192_setBBreg(dev, rFPGA1_RFMOD, bRFMOD, 0x1);
 			rtl8192_setBBreg(dev, rCCK0_System, bCCKSideBand, (priv->nCur40MhzPrimeSC>>1));

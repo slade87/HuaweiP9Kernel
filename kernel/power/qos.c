@@ -45,6 +45,20 @@
 #include <linux/uaccess.h>
 #include <linux/export.h>
 
+#ifdef CONFIG_HI6XXX_DDR_DEVFREQ
+/*===tele_mntn===*/
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+#if defined (CONFIG_HISILICON_PLATFORM_POWER_CONTROL)
+#include <linux/hisi/pm/hi6xxx-power-common.h>
+#endif
+#endif
+/*===tele_mntn===*/
+#else
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+#include <linux/hisi/hisi_tele_mntn.h>
+#endif
+#endif
+
 /*
  * locking rule: all changes to constraints or notifiers lists
  * or pm_qos_object list and pm_qos_objects need to happen with pm_qos_lock
@@ -86,6 +100,31 @@ static struct pm_qos_object network_lat_pm_qos = {
 	.name = "network_latency",
 };
 
+static BLOCKING_NOTIFIER_HEAD(memory_throughput_notifier);
+static struct pm_qos_constraints memory_tput_constraints = {
+	.list = PLIST_HEAD_INIT(memory_tput_constraints.list),
+	.target_value = PM_QOS_MEMORY_THROUGHPUT_DEFAULT_VALUE,
+	.default_value = PM_QOS_MEMORY_THROUGHPUT_DEFAULT_VALUE,
+	.type = PM_QOS_SUM,
+	.notifiers = &memory_throughput_notifier,
+};
+static struct pm_qos_object memory_throughput_pm_qos = {
+	.constraints = &memory_tput_constraints,
+	.name = "memory_throughput",
+};
+
+static BLOCKING_NOTIFIER_HEAD(memory_throughput_up_threshold_notifier);
+static struct pm_qos_constraints memory_tput_up_th_constraints = {
+	.list = PLIST_HEAD_INIT(memory_tput_up_th_constraints.list),
+	.target_value = PM_QOS_MEMORY_THROUGHPUT_UP_THRESHOLD_DEFAULT_VALUE,
+	.default_value = PM_QOS_MEMORY_THROUGHPUT_UP_THRESHOLD_DEFAULT_VALUE,
+	.type = PM_QOS_MIN,
+	.notifiers = &memory_throughput_up_threshold_notifier,
+};
+static struct pm_qos_object memory_throughput_up_th_pm_qos = {
+	.constraints = &memory_tput_up_th_constraints,
+	.name = "memory_throughput_up_threshold",
+};
 
 static BLOCKING_NOTIFIER_HEAD(network_throughput_notifier);
 static struct pm_qos_constraints network_tput_constraints = {
@@ -101,11 +140,41 @@ static struct pm_qos_object network_throughput_pm_qos = {
 };
 
 
+static BLOCKING_NOTIFIER_HEAD(buslow_minfreq_notifier_head);
+static struct pm_qos_constraints buslow_minfreq_constraints = {
+	.list = PLIST_HEAD_INIT(buslow_minfreq_constraints.list),
+	.target_value = QOS_BUSLOW_MINPROFILE_DEFAULT_VALUE,
+	.default_value = QOS_BUSLOW_MINPROFILE_DEFAULT_VALUE,
+	.type = PM_QOS_MAX,
+	.notifiers = &buslow_minfreq_notifier_head,
+};
+static struct pm_qos_object buslow_minfreq_pm_qos = {
+	.constraints = &buslow_minfreq_constraints,
+	.name = "buslow_minfreq",
+};
+
+static BLOCKING_NOTIFIER_HEAD(bus_minfreq_notifier_head);
+static struct pm_qos_constraints bus_minfreq_constraints = {
+	.list = PLIST_HEAD_INIT(bus_minfreq_constraints.list),
+	.target_value = QOS_BUSLOW_MINPROFILE_DEFAULT_VALUE,
+	.default_value = QOS_BUSLOW_MINPROFILE_DEFAULT_VALUE,
+	.type = PM_QOS_MAX,
+	.notifiers = &bus_minfreq_notifier_head,
+};
+static struct pm_qos_object bus_minfreq_pm_qos = {
+	.constraints = &bus_minfreq_constraints,
+	.name = "bus_minfreq",
+};
+
 static struct pm_qos_object *pm_qos_array[] = {
 	&null_pm_qos,
 	&cpu_dma_pm_qos,
 	&network_lat_pm_qos,
-	&network_throughput_pm_qos
+	&network_throughput_pm_qos,
+	&memory_throughput_pm_qos,
+	&memory_throughput_up_th_pm_qos,
+	&buslow_minfreq_pm_qos,
+	&bus_minfreq_pm_qos
 };
 
 static ssize_t pm_qos_power_write(struct file *filp, const char __user *buf,
@@ -126,6 +195,9 @@ static const struct file_operations pm_qos_power_fops = {
 /* unlocked internal variant */
 static inline int pm_qos_get_value(struct pm_qos_constraints *c)
 {
+	unsigned int sum = 0;
+	struct plist_node *p;
+
 	if (plist_head_empty(&c->list))
 		return c->default_value;
 
@@ -135,6 +207,16 @@ static inline int pm_qos_get_value(struct pm_qos_constraints *c)
 
 	case PM_QOS_MAX:
 		return plist_last(&c->list)->prio;
+
+	case PM_QOS_SUM:
+		plist_for_each(p, &c->list) {
+			if (p->prio < 0)
+				continue;
+			if (sum + p->prio > INT_MAX)
+				return INT_MAX;
+			sum += p->prio;
+		}
+		return sum;
 
 	default:
 		/* runtime check for not using enum */
@@ -152,7 +234,39 @@ static inline void pm_qos_set_value(struct pm_qos_constraints *c, s32 value)
 {
 	c->target_value = value;
 }
+#ifdef CONFIG_HI6XXX_DDR_DEVFREQ
+/*===tele_mntn===*/
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+#if defined (CONFIG_HISILICON_PLATFORM_POWER_CONTROL)
+static void tele_mntn_qos(enum pm_qos_req_action action, int value)
+{
+    PWC_TELE_MNTN_ACPU_DFS_DDR_QOSINFO_STRU * info = NULL;
 
+    if(!g_pPwcAcpuLog)
+        return;
+
+    info = &(g_pPwcAcpuLog->dfsDdr.qos.info);
+    info->cmd_id = (short)action;
+    info->tag_val = value;
+}
+#endif
+#endif
+/*===tele_mntn===*/
+#else
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+static void tele_mntn_qos(enum pm_qos_req_action action, int value)
+{
+    ACORE_TELE_MNTN_DFS_DDR_QOSINFO_STRU * info = NULL;
+
+    if(!p_acore_tele_mntn)
+        return;
+
+    info = &(p_acore_tele_mntn->dfsDdr.qos.info);
+    info->cmd_id = (short)action;
+    info->tag_val = value;
+}
+#endif
+#endif
 /**
  * pm_qos_update_target - manages the constraints list and calls the notifiers
  *  if needed
@@ -199,7 +313,19 @@ int pm_qos_update_target(struct pm_qos_constraints *c, struct plist_node *node,
 
 	curr_value = pm_qos_get_value(c);
 	pm_qos_set_value(c, curr_value);
-
+#ifdef CONFIG_HI6XXX_DDR_DEVFREQ
+/*===tele_mntn===*/
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+#if defined (CONFIG_HISILICON_PLATFORM_POWER_CONTROL)
+    tele_mntn_qos(action, value);
+#endif
+#endif
+/*===tele_mntn===*/
+#else
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+    tele_mntn_qos(action, value);
+#endif
+#endif
 	spin_unlock_irqrestore(&pm_qos_lock, flags);
 
 	if (prev_value != curr_value) {
@@ -602,3 +728,4 @@ static int __init pm_qos_power_init(void)
 }
 
 late_initcall(pm_qos_power_init);
+

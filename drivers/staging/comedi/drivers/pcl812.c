@@ -806,7 +806,6 @@ static irqreturn_t interrupt_pcl812_ai_int(int irq, void *d)
 		       ((inb(dev->iobase + PCL812_AD_HI) << 8) |
 			inb(dev->iobase + PCL812_AD_LO)) & mask);
 
-	/* Set up next channel. Added by abbotti 2010-01-20, but untested. */
 	next_chan = s->async->cur_chan + 1;
 	if (next_chan >= devpriv->ai_n_chan)
 		next_chan = 0;

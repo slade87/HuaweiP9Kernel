@@ -37,6 +37,8 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/spidev.h>
 
+#include <linux/amba/pl022.h>
+
 #include <asm/uaccess.h>
 
 
@@ -84,13 +86,14 @@ struct spidev_data {
 	/* buffer is NULL unless this device is open (users > 0) */
 	struct mutex		buf_lock;
 	unsigned		users;
-	u8			*buffer;
+	u8			*tx_buffer;
+	u8			*rx_buffer;
 };
 
 static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_lock);
 
-static unsigned bufsiz = 4096;
+static unsigned bufsiz = 256*1024;
 module_param(bufsiz, uint, S_IRUGO);
 MODULE_PARM_DESC(bufsiz, "data bytes in biggest supported SPI message");
 
@@ -134,7 +137,7 @@ static inline ssize_t
 spidev_sync_write(struct spidev_data *spidev, size_t len)
 {
 	struct spi_transfer	t = {
-			.tx_buf		= spidev->buffer,
+			.tx_buf		= spidev->tx_buffer,
 			.len		= len,
 		};
 	struct spi_message	m;
@@ -148,7 +151,7 @@ static inline ssize_t
 spidev_sync_read(struct spidev_data *spidev, size_t len)
 {
 	struct spi_transfer	t = {
-			.rx_buf		= spidev->buffer,
+			.rx_buf		= spidev->rx_buffer,
 			.len		= len,
 		};
 	struct spi_message	m;
@@ -178,7 +181,7 @@ spidev_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 	if (status > 0) {
 		unsigned long	missing;
 
-		missing = copy_to_user(buf, spidev->buffer, status);
+		missing = copy_to_user(buf, spidev->rx_buffer, status);
 		if (missing == status)
 			status = -EFAULT;
 		else
@@ -205,7 +208,7 @@ spidev_write(struct file *filp, const char __user *buf,
 	spidev = filp->private_data;
 
 	mutex_lock(&spidev->buf_lock);
-	missing = copy_from_user(spidev->buffer, buf, count);
+	missing = copy_from_user(spidev->tx_buffer, buf, count);
 	if (missing == 0) {
 		status = spidev_sync_write(spidev, count);
 	} else
@@ -223,8 +226,10 @@ static int spidev_message(struct spidev_data *spidev,
 	struct spi_transfer	*k_tmp;
 	struct spi_ioc_transfer *u_tmp;
 	unsigned		n, total;
-	u8			*buf;
+	u8			*tx_buf;
+	u8			*rx_buf;
 	int			status = -EFAULT;
+	int i;
 
 	spi_message_init(&msg);
 	k_xfers = kcalloc(n_xfers, sizeof(*k_tmp), GFP_KERNEL);
@@ -235,72 +240,92 @@ static int spidev_message(struct spidev_data *spidev,
 	 * We walk the array of user-provided transfers, using each one
 	 * to initialize a kernel version of the same transfer.
 	 */
-	buf = spidev->buffer;
+	tx_buf = spidev->tx_buffer;
+	rx_buf = spidev->rx_buffer;
 	total = 0;
-	for (n = n_xfers, k_tmp = k_xfers, u_tmp = u_xfers;
+	dev_dbg(&spidev->spi->dev,
+		"spidev_message: n_xfers: %d\n", n_xfers);
+	for (n = n_xfers, k_tmp = k_xfers, u_tmp = u_xfers, i=0;
 			n;
-			n--, k_tmp++, u_tmp++) {
+			n--, k_tmp++, u_tmp++, i++) {
 		k_tmp->len = u_tmp->len;
 
 		total += k_tmp->len;
 		/* Check total length of transfers.  Also check each
-		 * transfer length to avoid arithmetic overflow.
-		 */
-		if (total > bufsiz || k_tmp->len > bufsiz) {
+		* transfer length to avoid arithmetic overflow.
+		*/
+			if (total > bufsiz || k_tmp->len > bufsiz) {
 			status = -EMSGSIZE;
+			dev_dbg(&spidev->spi->dev,
+				"spidev_message: total is more: %d\n", total);
 			goto done;
 		}
+		dev_dbg(&spidev->spi->dev,
+			"spidev_message: rx_buf: %08x, tx_buf: %08x\n",
+			(u32)u_tmp->rx_buf, (u32)u_tmp->tx_buf);
 
 		if (u_tmp->rx_buf) {
-			k_tmp->rx_buf = buf;
+			k_tmp->rx_buf = rx_buf;
 			if (!access_ok(VERIFY_WRITE, (u8 __user *)
 						(uintptr_t) u_tmp->rx_buf,
-						u_tmp->len))
+						u_tmp->len)) {
+				dev_dbg(&spidev->spi->dev,
+					"spidev_message: access_ok error\n");
 				goto done;
+			}
 		}
-		if (u_tmp->tx_buf) {
-			k_tmp->tx_buf = buf;
-			if (copy_from_user(buf, (const u8 __user *)
-						(uintptr_t) u_tmp->tx_buf,
-					u_tmp->len))
-				goto done;
-		}
-		buf += k_tmp->len;
 
+		if (u_tmp->tx_buf) {
+			k_tmp->tx_buf = tx_buf;
+			if (copy_from_user(tx_buf, (const u8 __user *)
+						(uintptr_t) u_tmp->tx_buf,
+					u_tmp->len)) {
+				dev_dbg(&spidev->spi->dev,
+					"spidev_message: copy_from_user error\n");
+				goto done;
+			}
+		}
+		tx_buf += k_tmp->len;
+		rx_buf += k_tmp->len;
 		k_tmp->cs_change = !!u_tmp->cs_change;
 		k_tmp->bits_per_word = u_tmp->bits_per_word;
 		k_tmp->delay_usecs = u_tmp->delay_usecs;
 		k_tmp->speed_hz = u_tmp->speed_hz;
 #ifdef VERBOSE
+
 		dev_dbg(&spidev->spi->dev,
-			"  xfer len %zd %s%s%s%dbits %u usec %uHz\n",
+			"  xfer len %zd %s%s%s%dbits %u usec %uHz  n:%d\n",
 			u_tmp->len,
 			u_tmp->rx_buf ? "rx " : "",
 			u_tmp->tx_buf ? "tx " : "",
 			u_tmp->cs_change ? "cs " : "",
 			u_tmp->bits_per_word ? : spidev->spi->bits_per_word,
 			u_tmp->delay_usecs,
-			u_tmp->speed_hz ? : spidev->spi->max_speed_hz);
+			u_tmp->speed_hz ? : spidev->spi->max_speed_hz,
+			n);
 #endif
 		spi_message_add_tail(k_tmp, &msg);
 	}
 
 	status = spidev_sync(spidev, &msg);
-	if (status < 0)
+	if (status < 0) {
+		dev_dbg(&spidev->spi->dev, "spidev_sync error with status: %d\n", status);
 		goto done;
+	}
 
 	/* copy any rx data out of bounce buffer */
-	buf = spidev->buffer;
+	rx_buf = spidev->rx_buffer;
 	for (n = n_xfers, u_tmp = u_xfers; n; n--, u_tmp++) {
 		if (u_tmp->rx_buf) {
 			if (__copy_to_user((u8 __user *)
-					(uintptr_t) u_tmp->rx_buf, buf,
+					(uintptr_t) u_tmp->rx_buf, rx_buf,
 					u_tmp->len)) {
+				dev_dbg(&spidev->spi->dev, "__copy_to_user error\n");
 				status = -EFAULT;
 				goto done;
 			}
 		}
-		buf += u_tmp->len;
+		rx_buf += u_tmp->len;
 	}
 	status = total;
 
@@ -446,11 +471,13 @@ spidev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 
 		tmp = _IOC_SIZE(cmd);
+		dev_dbg(&spi->dev, "spidev_ioctl: ioc size: %d\n", tmp);
 		if ((tmp % sizeof(struct spi_ioc_transfer)) != 0) {
 			retval = -EINVAL;
 			break;
 		}
 		n_ioc = tmp / sizeof(struct spi_ioc_transfer);
+		dev_dbg(&spi->dev, "spidev_ioctl: n_ioc: %d\n", n_ioc);
 		if (n_ioc == 0)
 			break;
 
@@ -474,6 +501,8 @@ spidev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 	mutex_unlock(&spidev->buf_lock);
 	spi_dev_put(spi);
+
+	dev_dbg(&spi->dev, "spidev_ioctl: retval:%d\n", retval);
 	return retval;
 }
 
@@ -501,13 +530,21 @@ static int spidev_open(struct inode *inode, struct file *filp)
 		}
 	}
 	if (status == 0) {
-		if (!spidev->buffer) {
-			spidev->buffer = kmalloc(bufsiz, GFP_KERNEL);
-			if (!spidev->buffer) {
+		if (!spidev->tx_buffer) {
+			spidev->tx_buffer = kmalloc(bufsiz, GFP_KERNEL);
+			if (!spidev->tx_buffer) {
 				dev_dbg(&spidev->spi->dev, "open/ENOMEM\n");
 				status = -ENOMEM;
 			}
 		}
+		if (!spidev->rx_buffer) {
+			spidev->rx_buffer = kmalloc(bufsiz, GFP_KERNEL);
+			if (!spidev->rx_buffer) {
+				dev_dbg(&spidev->spi->dev, "open/ENOMEM\n");
+				status = -ENOMEM;
+			}
+		}
+
 		if (status == 0) {
 			spidev->users++;
 			filp->private_data = spidev;
@@ -534,9 +571,10 @@ static int spidev_release(struct inode *inode, struct file *filp)
 	if (!spidev->users) {
 		int		dofree;
 
-		kfree(spidev->buffer);
-		spidev->buffer = NULL;
-
+		kfree(spidev->tx_buffer);
+		spidev->tx_buffer = NULL;
+		kfree(spidev->rx_buffer);
+		spidev->rx_buffer = NULL;
 		/* ... after we unbound from the underlying device? */
 		spin_lock_irq(&spidev->spi_lock);
 		dofree = (spidev->spi == NULL);
@@ -573,7 +611,34 @@ static const struct file_operations spidev_fops = {
  */
 
 static struct class *spidev_class;
+void of_spi_get_controller_data(struct spi_device *spi)
+{
+	struct device_node* np = spi->dev.of_node;
+	u32 tmp;
+	struct pl022_config_chip *spidev_chip_info = kzalloc(sizeof(struct pl022_config_chip), GFP_KERNEL);
 
+	of_property_read_u32(np, "com-mode", &tmp);
+	spidev_chip_info->com_mode = tmp;
+	of_property_read_u32(np, "iface", &tmp);
+	spidev_chip_info->iface = tmp;
+	of_property_read_u32(np, "hierarchy", &tmp);
+	spidev_chip_info->hierarchy = tmp;
+	of_property_read_u32(np, "slave-tx-disable", &tmp);
+	spidev_chip_info->slave_tx_disable = tmp;
+	of_property_read_u32(np, "rx-lev-trig", &tmp);
+	spidev_chip_info->rx_lev_trig = tmp;
+	of_property_read_u32(np, "tx-lev-trig", &tmp);
+	spidev_chip_info->tx_lev_trig = tmp;
+	of_property_read_u32(np, "ctrl-len", &tmp);
+	spidev_chip_info->ctrl_len = tmp;
+	of_property_read_u32(np, "wait-state", &tmp);
+	spidev_chip_info->wait_state = tmp;
+	of_property_read_u32(np, "duplex", &tmp);
+	spidev_chip_info->duplex = tmp;
+
+	spi->controller_data = spidev_chip_info;
+
+}
 /*-------------------------------------------------------------------------*/
 
 static int spidev_probe(struct spi_device *spi)
@@ -606,7 +671,7 @@ static int spidev_probe(struct spi_device *spi)
 		dev = device_create(spidev_class, &spi->dev, spidev->devt,
 				    spidev, "spidev%d.%d",
 				    spi->master->bus_num, spi->chip_select);
-		status = PTR_RET(dev);
+		status = IS_ERR(dev) ? PTR_ERR(dev) : 0;
 	} else {
 		dev_dbg(&spi->dev, "no minor number available!\n");
 		status = -ENODEV;
@@ -640,25 +705,26 @@ static int spidev_remove(struct spi_device *spi)
 	list_del(&spidev->device_entry);
 	device_destroy(spidev_class, spidev->devt);
 	clear_bit(MINOR(spidev->devt), minors);
+	if (spi->controller_data)
+		kfree(spi->controller_data);
 	if (spidev->users == 0)
 		kfree(spidev);
 	mutex_unlock(&device_list_lock);
 
 	return 0;
 }
-
-static const struct of_device_id spidev_dt_ids[] = {
-	{ .compatible = "rohm,dh2228fv" },
+static const struct of_device_id spidev1_dt_ids[] = {
+	{ .compatible = "spi_dev1"},
 	{},
 };
 
-MODULE_DEVICE_TABLE(of, spidev_dt_ids);
+MODULE_DEVICE_TABLE(of, spidev1_dt_ids);
 
-static struct spi_driver spidev_spi_driver = {
+static struct spi_driver spidev_spi_driver1 = {
 	.driver = {
-		.name =		"spidev",
+		.name =		"spi_dev1",
 		.owner =	THIS_MODULE,
-		.of_match_table = of_match_ptr(spidev_dt_ids),
+		.of_match_table = of_match_ptr(spidev1_dt_ids),
 	},
 	.probe =	spidev_probe,
 	.remove =	spidev_remove,
@@ -670,6 +736,268 @@ static struct spi_driver spidev_spi_driver = {
 	 */
 };
 
+static const struct of_device_id spidev2_dt_ids[] = {
+	{ .compatible = "spi_dev2"},
+	{},
+};
+
+MODULE_DEVICE_TABLE(of, spidev2_dt_ids);
+
+static struct spi_driver spidev_spi_driver2 = {
+	.driver = {
+		.name =		"spi_dev2",
+		.owner =	THIS_MODULE,
+		.of_match_table = of_match_ptr(spidev2_dt_ids),
+	},
+	.probe =	spidev_probe,
+	.remove =	spidev_remove,
+
+	/* NOTE:  suspend/resume methods are not necessary here.
+	 * We don't do anything except pass the requests to/from
+	 * the underlying controller.  The refrigerator handles
+	 * most issues; the controller driver handles the rest.
+	 */
+};
+
+static const struct of_device_id spidev3_dt_ids[] = {
+	{ .compatible = "spi_dev3"},
+	{},
+};
+
+MODULE_DEVICE_TABLE(of, spidev3_dt_ids);
+
+static struct spi_driver spidev_spi_driver3 = {
+	.driver = {
+		.name =		"spi_dev3",
+		.owner =	THIS_MODULE,
+		.of_match_table = of_match_ptr(spidev3_dt_ids),
+	},
+	.probe =	spidev_probe,
+	.remove =	spidev_remove,
+
+	/* NOTE:  suspend/resume methods are not necessary here.
+	 * We don't do anything except pass the requests to/from
+	 * the underlying controller.  The refrigerator handles
+	 * most issues; the controller driver handles the rest.
+	 */
+};
+
+static const struct of_device_id spidev10_dt_ids[] = {
+	{ .compatible = "spi_dev10"},
+	{},
+};
+
+MODULE_DEVICE_TABLE(of, spidev10_dt_ids);
+
+static struct spi_driver spidev_spi_driver10 = {
+	.driver = {
+		.name =		"spi_dev10",
+		.owner =	THIS_MODULE,
+		.of_match_table = of_match_ptr(spidev10_dt_ids),
+	},
+	.probe =	spidev_probe,
+	.remove =	spidev_remove,
+
+	/* NOTE:  suspend/resume methods are not necessary here.
+	 * We don't do anything except pass the requests to/from
+	 * the underlying controller.  The refrigerator handles
+	 * most issues; the controller driver handles the rest.
+	 */
+};
+
+static const struct of_device_id spidev20_dt_ids[] = {
+	{ .compatible = "spi_dev20"},
+	{},
+};
+
+MODULE_DEVICE_TABLE(of, spidev20_dt_ids);
+
+static struct spi_driver spidev_spi_driver20 = {
+	.driver = {
+		.name =		"spi_dev20",
+		.owner =	THIS_MODULE,
+		.of_match_table = of_match_ptr(spidev20_dt_ids),
+	},
+	.probe =	spidev_probe,
+	.remove =	spidev_remove,
+
+	/* NOTE:  suspend/resume methods are not necessary here.
+	 * We don't do anything except pass the requests to/from
+	 * the underlying controller.  The refrigerator handles
+	 * most issues; the controller driver handles the rest.
+	 */
+};
+#if defined(CONFIG_SPIDEV_SUPPORT_HI3660)
+
+static const struct of_device_id spidev30_dt_ids[] = {
+	{ .compatible = "spi_dev30"},
+	{},
+};
+MODULE_DEVICE_TABLE(of, spidev30_dt_ids);
+static struct spi_driver spidev_spi_driver30 = {
+	.driver = {
+		.name =		"spi_dev30",
+		.owner =	THIS_MODULE,
+		.of_match_table = of_match_ptr(spidev30_dt_ids),
+	},
+	.probe =	spidev_probe,
+	.remove =	spidev_remove,
+
+	/* NOTE:  suspend/resume methods are not necessary here.
+	 * We don't do anything except pass the requests to/from
+	 * the underlying controller.  The refrigerator handles
+	 * most issues; the controller driver handles the rest.
+	 */
+};
+
+static const struct of_device_id spidev31_dt_ids[] = {
+	{ .compatible = "spi_dev31"},
+	{},
+};
+MODULE_DEVICE_TABLE(of, spidev31_dt_ids);
+static struct spi_driver spidev_spi_driver31 = {
+	.driver = {
+		.name =		"spi_dev31",
+		.owner =	THIS_MODULE,
+		.of_match_table = of_match_ptr(spidev31_dt_ids),
+	},
+	.probe =	spidev_probe,
+	.remove =	spidev_remove,
+
+	/* NOTE:  suspend/resume methods are not necessary here.
+	 * We don't do anything except pass the requests to/from
+	 * the underlying controller.  The refrigerator handles
+	 * most issues; the controller driver handles the rest.
+	 */
+};
+
+static const struct of_device_id spidev32_dt_ids[] = {
+	{ .compatible = "spi_dev32"},
+	{},
+};
+MODULE_DEVICE_TABLE(of, spidev32_dt_ids);
+static struct spi_driver spidev_spi_driver32 = {
+	.driver = {
+		.name =		"spi_dev32",
+		.owner =	THIS_MODULE,
+		.of_match_table = of_match_ptr(spidev32_dt_ids),
+	},
+	.probe =	spidev_probe,
+	.remove =	spidev_remove,
+
+	/* NOTE:  suspend/resume methods are not necessary here.
+	 * We don't do anything except pass the requests to/from
+	 * the underlying controller.  The refrigerator handles
+	 * most issues; the controller driver handles the rest.
+	 */
+};
+
+static const struct of_device_id spidev33_dt_ids[] = {
+	{ .compatible = "spi_dev33"},
+	{},
+};
+MODULE_DEVICE_TABLE(of, spidev33_dt_ids);
+static struct spi_driver spidev_spi_driver33 = {
+	.driver = {
+		.name =		"spi_dev33",
+		.owner =	THIS_MODULE,
+		.of_match_table = of_match_ptr(spidev33_dt_ids),
+	},
+	.probe =	spidev_probe,
+	.remove =	spidev_remove,
+
+	/* NOTE:  suspend/resume methods are not necessary here.
+	 * We don't do anything except pass the requests to/from
+	 * the underlying controller.  The refrigerator handles
+	 * most issues; the controller driver handles the rest.
+	 */
+};
+
+static const struct of_device_id spidev40_dt_ids[] = {
+	{ .compatible = "spi_dev40"},
+	{},
+};
+MODULE_DEVICE_TABLE(of, spidev40_dt_ids);
+static struct spi_driver spidev_spi_driver40 = {
+	.driver = {
+		.name =		"spi_dev40",
+		.owner =	THIS_MODULE,
+		.of_match_table = of_match_ptr(spidev40_dt_ids),
+	},
+	.probe =	spidev_probe,
+	.remove =	spidev_remove,
+
+	/* NOTE:  suspend/resume methods are not necessary here.
+	 * We don't do anything except pass the requests to/from
+	 * the underlying controller.  The refrigerator handles
+	 * most issues; the controller driver handles the rest.
+	 */
+};
+
+static const struct of_device_id spidev41_dt_ids[] = {
+	{ .compatible = "spi_dev41"},
+	{},
+};
+MODULE_DEVICE_TABLE(of, spidev41_dt_ids);
+static struct spi_driver spidev_spi_driver41 = {
+	.driver = {
+		.name =		"spi_dev41",
+		.owner =	THIS_MODULE,
+		.of_match_table = of_match_ptr(spidev41_dt_ids),
+	},
+	.probe =	spidev_probe,
+	.remove =	spidev_remove,
+
+	/* NOTE:  suspend/resume methods are not necessary here.
+	 * We don't do anything except pass the requests to/from
+	 * the underlying controller.  The refrigerator handles
+	 * most issues; the controller driver handles the rest.
+	 */
+};
+
+static const struct of_device_id spidev42_dt_ids[] = {
+	{ .compatible = "spi_dev42"},
+	{},
+};
+MODULE_DEVICE_TABLE(of, spidev42_dt_ids);
+static struct spi_driver spidev_spi_driver42 = {
+	.driver = {
+		.name =		"spi_dev42",
+		.owner =	THIS_MODULE,
+		.of_match_table = of_match_ptr(spidev42_dt_ids),
+	},
+	.probe =	spidev_probe,
+	.remove =	spidev_remove,
+
+	/* NOTE:  suspend/resume methods are not necessary here.
+	 * We don't do anything except pass the requests to/from
+	 * the underlying controller.  The refrigerator handles
+	 * most issues; the controller driver handles the rest.
+	 */
+};
+
+static const struct of_device_id spidev43_dt_ids[] = {
+	{ .compatible = "spi_dev43"},
+	{},
+};
+MODULE_DEVICE_TABLE(of, spidev43_dt_ids);
+static struct spi_driver spidev_spi_driver43 = {
+	.driver = {
+		.name =		"spi_dev43",
+		.owner =	THIS_MODULE,
+		.of_match_table = of_match_ptr(spidev43_dt_ids),
+	},
+	.probe =	spidev_probe,
+	.remove =	spidev_remove,
+
+	/* NOTE:  suspend/resume methods are not necessary here.
+	 * We don't do anything except pass the requests to/from
+	 * the underlying controller.  The refrigerator handles
+	 * most issues; the controller driver handles the rest.
+	 */
+};
+
+#endif
 /*-------------------------------------------------------------------------*/
 
 static int __init spidev_init(void)
@@ -687,24 +1015,129 @@ static int __init spidev_init(void)
 
 	spidev_class = class_create(THIS_MODULE, "spidev");
 	if (IS_ERR(spidev_class)) {
-		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver.driver.name);
+		//unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver.driver.name);
 		return PTR_ERR(spidev_class);
 	}
 
-	status = spi_register_driver(&spidev_spi_driver);
+	status = spi_register_driver(&spidev_spi_driver1);
 	if (status < 0) {
 		class_destroy(spidev_class);
-		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver.driver.name);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver1.driver.name);
 	}
+
+	status = spi_register_driver(&spidev_spi_driver2);
+	if (status < 0) {
+		class_destroy(spidev_class);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver2.driver.name);
+	}
+
+	status = spi_register_driver(&spidev_spi_driver3);
+	if (status < 0) {
+		class_destroy(spidev_class);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver3.driver.name);
+	}
+
+	status = spi_register_driver(&spidev_spi_driver10);
+	if (status < 0) {
+		class_destroy(spidev_class);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver10.driver.name);
+	}
+
+	status = spi_register_driver(&spidev_spi_driver20);
+	if (status < 0) {
+		class_destroy(spidev_class);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver20.driver.name);
+	}
+
+#if defined(CONFIG_SPIDEV_SUPPORT_HI3660)
+	status = spi_register_driver(&spidev_spi_driver30);
+	if (status < 0) {
+		class_destroy(spidev_class);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver30.driver.name);
+	}
+
+
+	status = spi_register_driver(&spidev_spi_driver31);
+	if (status < 0) {
+		class_destroy(spidev_class);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver31.driver.name);
+	}
+
+	status = spi_register_driver(&spidev_spi_driver32);
+	if (status < 0) {
+		class_destroy(spidev_class);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver32.driver.name);
+	}
+
+	status = spi_register_driver(&spidev_spi_driver33);
+	if (status < 0) {
+		class_destroy(spidev_class);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver33.driver.name);
+	}
+
+	status = spi_register_driver(&spidev_spi_driver40);
+	if (status < 0) {
+		class_destroy(spidev_class);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver40.driver.name);
+	}
+
+	status = spi_register_driver(&spidev_spi_driver41);
+	if (status < 0) {
+		class_destroy(spidev_class);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver41.driver.name);
+	}
+
+	status = spi_register_driver(&spidev_spi_driver42);
+	if (status < 0) {
+		class_destroy(spidev_class);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver42.driver.name);
+	}
+
+	status = spi_register_driver(&spidev_spi_driver43);
+	if (status < 0) {
+		class_destroy(spidev_class);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver43.driver.name);
+	}
+#endif
 	return status;
 }
 module_init(spidev_init);
 
 static void __exit spidev_exit(void)
 {
-	spi_unregister_driver(&spidev_spi_driver);
-	class_destroy(spidev_class);
-	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver.driver.name);
+	spi_unregister_driver(&spidev_spi_driver1);
+	spi_unregister_driver(&spidev_spi_driver2);
+	spi_unregister_driver(&spidev_spi_driver3);
+	spi_unregister_driver(&spidev_spi_driver10);
+	spi_unregister_driver(&spidev_spi_driver20);
+
+#if defined(CONFIG_SPIDEV_SUPPORT_HI3660)
+	spi_unregister_driver(&spidev_spi_driver30);
+	spi_unregister_driver(&spidev_spi_driver31);
+	spi_unregister_driver(&spidev_spi_driver32);
+	spi_unregister_driver(&spidev_spi_driver33);
+	spi_unregister_driver(&spidev_spi_driver40);
+	spi_unregister_driver(&spidev_spi_driver41);
+	spi_unregister_driver(&spidev_spi_driver42);
+	spi_unregister_driver(&spidev_spi_driver43);
+#endif
+
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver1.driver.name);
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver2.driver.name);
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver3.driver.name);
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver10.driver.name);
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver20.driver.name);
+
+#if defined(CONFIG_SPIDEV_SUPPORT_HI3660)
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver30.driver.name);
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver31.driver.name);
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver32.driver.name);
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver33.driver.name);
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver40.driver.name);
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver41.driver.name);
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver42.driver.name);
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi_driver43.driver.name);
+#endif
 }
 module_exit(spidev_exit);
 

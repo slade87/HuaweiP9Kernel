@@ -1234,8 +1234,8 @@ static unsigned long cfq_slice_offset(struct cfq_data *cfqd,
 	/*
 	 * just an approximation, should be ok.
 	 */
-	return (cfqq->cfqg->nr_cfqq - 1) * (cfq_prio_slice(cfqd, 1, 0) -
-		       cfq_prio_slice(cfqd, cfq_cfqq_sync(cfqq), cfqq->ioprio));
+	return (unsigned long)((cfqq->cfqg->nr_cfqq - 1) * (cfq_prio_slice(cfqd, 1, 0) -
+		       cfq_prio_slice(cfqd, cfq_cfqq_sync(cfqq), cfqq->ioprio)));
 }
 
 static inline s64
@@ -1328,10 +1328,10 @@ cfq_group_service_tree_add(struct cfq_rb_root *st, struct cfq_group *cfqg)
 	while ((parent = cfqg_parent(pos))) {
 		if (propagate) {
 			cfq_update_group_weight(pos);
-			propagate = !parent->nr_active++;
+			propagate = !parent->nr_active++;/* [false alarm] */
 			parent->children_weight += pos->weight;
 		}
-		vfr = vfr * pos->weight / parent->children_weight;
+		vfr = vfr * pos->weight / parent->children_weight;/* [false alarm] */
 		pos = parent;
 	}
 
@@ -1386,7 +1386,7 @@ cfq_group_service_tree_del(struct cfq_rb_root *st, struct cfq_group *cfqg)
 		if (!parent)
 			break;
 
-		propagate = !--parent->nr_active;
+		propagate = !--parent->nr_active;/* [false alarm] */
 		parent->children_weight -= pos->weight;
 		pos = parent;
 	}
@@ -1506,7 +1506,7 @@ static void cfq_init_cfqg_base(struct cfq_group *cfqg)
 	int i, j;
 
 	for_each_cfqg_st(cfqg, i, j, st)
-		*st = CFQ_RB_ROOT;
+		*st = CFQ_RB_ROOT;/* [false alarm] */
 	RB_CLEAR_NODE(&cfqg->rb_node);
 
 	cfqg->ttime.last_end_request = jiffies;

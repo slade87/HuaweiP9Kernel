@@ -70,6 +70,14 @@ obj-$(CONFIG_REGULATOR_WM831X) += wm831x-ldo.o
 obj-$(CONFIG_REGULATOR_WM8350) += wm8350-regulator.o
 obj-$(CONFIG_REGULATOR_WM8400) += wm8400-regulator.o
 obj-$(CONFIG_REGULATOR_WM8994) += wm8994-regulator.o
-
-
+obj-$(CONFIG_HI3XXX_REGULATOR_HI6421V300) += hi3xxx_hi6421v300_regulator.o
+obj-$(CONFIG_HI3XXX_REGULATOR_KIRIN925) += hi3xxx_krin925_regulator.o
+obj-$(CONFIG_HISI_IP_REGULATOR) += hi3xxx_kirin950_regulator.o
+obj-$(CONFIG_HISI_REGULATOR_HI3660) += hisi_kirin960_regulator.o
+obj-$(CONFIG_HISI_REGULATOR) += hisi_regulator.o
+obj-$(CONFIG_REGULATOR_HI6XXX) += hi6xxx_regulator.o
+obj-$(CONFIG_REGULATOR_HI6XXX) += hi6xxx_regulator_adapt.o
+obj-$(CONFIG_HISI_CHARGER_REGULATOR) += hisi_charger_regulator.o
+obj-$(CONFIG_REGULATOR_HI6XXX) += test_hi6xxx_regulator.o
+obj-$(CONFIG_REGULATOR_IP_DEBUG) +=hisi_regulator_ip_debug.o
 ccflags-$(CONFIG_REGULATOR_DEBUG) += -DDEBUG

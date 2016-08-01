@@ -10,6 +10,7 @@
  */
 
 #include <linux/err.h>
+#include <linux/module.h>
 #include <linux/pm_runtime.h>
 
 #include <linux/mmc/host.h>
@@ -28,6 +29,15 @@
 #include "sdio_ops.h"
 #include "sdio_cis.h"
 
+#ifdef CONFIG_MMC_EMBEDDED_SDIO
+#include <linux/mmc/sdio_ids.h>
+#endif
+
+#ifdef  CONFIG_HUAWEI_DSM
+#include <dsm/dsm_pub.h>
+#include "../host/dw_mmc.h"
+extern void dw_mci_dsm_dump(struct dw_mci  *host, int err_num);
+#endif
 static int sdio_read_fbr(struct sdio_func *func)
 {
 	int ret;
@@ -363,7 +373,7 @@ static unsigned mmc_sdio_get_max_clock(struct mmc_card *card)
 {
 	unsigned max_dtr;
 
-	if (mmc_card_highspeed(card)) {
+	if (mmc_card_hs(card)) {
 		/*
 		 * The SDIO specification doesn't mention how
 		 * the CIS transfer speed register relates to
@@ -371,12 +381,15 @@ static unsigned mmc_sdio_get_max_clock(struct mmc_card *card)
 		 * mandatory.
 		 */
 		max_dtr = 50000000;
-	} else {
+	} else
+	{
 		max_dtr = card->cis.max_dtr;
 	}
 
+
+
 	if (card->type == MMC_TYPE_SD_COMBO)
-		max_dtr = min(max_dtr, mmc_sd_get_max_clock(card));
+		max_dtr = min(max_dtr, mmc_sd_get_max_clock(card));/*lint !e666*/
 
 	return max_dtr;
 }
@@ -563,10 +576,18 @@ static int mmc_sdio_init_uhs_card(struct mmc_card *card)
 	if (err)
 		goto out;
 
-	/* Initialize and start re-tuning timer */
-	if (!mmc_host_is_spi(card->host) && card->host->ops->execute_tuning)
+	/*
+	 * SPI mode doesn't define CMD19 and tuning is only valid for SDR50 and
+	 * SDR104 mode SD-cards. Note that tuning is mandatory for SDR104.
+	 */
+	if (!mmc_host_is_spi(card->host) && card->host->ops->execute_tuning &&
+			((card->sw_caps.sd3_bus_mode & SD_MODE_UHS_SDR50) ||
+			 (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_SDR104))) {
+		mmc_host_clk_hold(card->host);
 		err = card->host->ops->execute_tuning(card->host,
 						      MMC_SEND_TUNING_BLOCK);
+		mmc_host_clk_release(card->host);
+	}
 
 out:
 
@@ -585,23 +606,29 @@ static int mmc_sdio_init_card(struct mmc_host *host, u32 ocr,
 	struct mmc_card *card;
 	int err;
 	int retries = 10;
+	u32 rocr = 0;
+	u32 ocr_card = ocr;
 
 	BUG_ON(!host);
 	WARN_ON(!host->claimed);
 
+	/* to query card if 1.8V signalling is supported */
+	if (mmc_host_uhs(host))
+	    ocr |= R4_18V_PRESENT;
+
 try_again:
+
 	if (!retries) {
 		pr_warning("%s: Skipping voltage switch\n",
 				mmc_hostname(host));
 		ocr &= ~R4_18V_PRESENT;
-		host->ocr &= ~R4_18V_PRESENT;
 	}
 
 	/*
 	 * Inform the card of the voltage
 	 */
 	if (!powered_resume) {
-		err = mmc_send_io_op_cond(host, host->ocr, &ocr);
+		err = mmc_send_io_op_cond(host, ocr, &rocr);
 		if (err)
 			goto err;
 	}
@@ -624,8 +651,8 @@ try_again:
 		goto err;
 	}
 
-	if ((ocr & R4_MEMORY_PRESENT) &&
-	    mmc_sd_get_cid(host, host->ocr & ocr, card->raw_cid, NULL) == 0) {
+	if ((rocr & R4_MEMORY_PRESENT) &&
+	    mmc_sd_get_cid(host, ocr & rocr, card->raw_cid, NULL) == 0) {
 		card->type = MMC_TYPE_SD_COMBO;
 
 		if (oldcard && (oldcard->type != MMC_TYPE_SD_COMBO ||
@@ -654,9 +681,15 @@ try_again:
 	 * UHS mode is not enabled to maintain compatibility and some
 	 * systems that claim 1.8v signalling in fact do not support
 	 * it.
+	 *
+	 * Here add mmc_host_wifi_support_cmd11 to judge for the device
+	 * which is need or not. Because some wifi devices need to rcv
+	 * cmd11 to convert to SDR104 or SDR50 working mode!
 	 */
-	if (!powered_resume && (ocr & R4_18V_PRESENT) && mmc_host_uhs(host)) {
-		err = mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180);
+	if (!powered_resume && (rocr & ocr & R4_18V_PRESENT)
+				&& mmc_host_wifi_support_cmd11(host)) {
+		err = mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180,
+					ocr);
 		if (err == -EAGAIN) {
 			sdio_reset(host);
 			mmc_go_idle(host);
@@ -666,12 +699,10 @@ try_again:
 			goto try_again;
 		} else if (err) {
 			ocr &= ~R4_18V_PRESENT;
-			host->ocr &= ~R4_18V_PRESENT;
 		}
 		err = 0;
-	} else {
+	} else if (mmc_host_wifi_support_cmd11(host)) {
 		ocr &= ~R4_18V_PRESENT;
-		host->ocr &= ~R4_18V_PRESENT;
 	}
 
 	/*
@@ -718,29 +749,44 @@ try_again:
 		 * It's host's responsibility to fill cccr and cis
 		 * structures in init_card().
 		 */
-		mmc_set_clock(host, card->cis.max_dtr);
+		{
+			mmc_set_clock(host, card->cis.max_dtr);
+			if (card->cccr.high_speed) {
+				mmc_set_timing(card->host, MMC_TIMING_SD_HS);
+			}
 
-		if (card->cccr.high_speed) {
-			mmc_card_set_highspeed(card);
-			mmc_set_timing(card->host, MMC_TIMING_SD_HS);
+			goto finish;
 		}
-
-		goto finish;
 	}
+#ifdef CONFIG_MMC_EMBEDDED_SDIO
+	if (host->embedded_sdio_data.cccr)
+		memcpy(&card->cccr, host->embedded_sdio_data.cccr, sizeof(struct sdio_cccr));
+	else {
+#endif
+		/*
+		 * Read the common registers.
+		 */
+		err = sdio_read_cccr(card,  ocr);
+		if (err)
+			goto remove;
+#ifdef CONFIG_MMC_EMBEDDED_SDIO
+	}
+#endif
 
-	/*
-	 * Read the common registers.
-	 */
-	err = sdio_read_cccr(card, ocr);
-	if (err)
-		goto remove;
-
-	/*
-	 * Read the common CIS tuples.
-	 */
-	err = sdio_read_common_cis(card);
-	if (err)
-		goto remove;
+#ifdef CONFIG_MMC_EMBEDDED_SDIO
+	if (host->embedded_sdio_data.cis)
+		memcpy(&card->cis, host->embedded_sdio_data.cis, sizeof(struct sdio_cis));
+	else {
+#endif
+		/*
+		 * Read the common CIS tuples.
+		 */
+		err = sdio_read_common_cis(card);
+		if (err)
+			goto remove;
+#ifdef CONFIG_MMC_EMBEDDED_SDIO
+	}
+#endif
 
 	if (oldcard) {
 		int same = (card->cis.vendor == oldcard->cis.vendor &&
@@ -751,6 +797,7 @@ try_again:
 
 		card = oldcard;
 	}
+	card->ocr = ocr_card;
 	mmc_fixup_device(card, NULL);
 
 	if (card->type == MMC_TYPE_SD_COMBO) {
@@ -766,6 +813,8 @@ try_again:
 			card->dev.type = &sd_type;
 	}
 
+
+
 	/*
 	 * If needed, disconnect card detection pull-up resistor.
 	 */
@@ -779,16 +828,13 @@ try_again:
 		err = mmc_sdio_init_uhs_card(card);
 		if (err)
 			goto remove;
-
-		/* Card is an ultra-high-speed card */
-		mmc_card_set_uhs(card);
 	} else {
 		/*
 		 * Switch to high-speed (if supported).
 		 */
 		err = sdio_enable_hs(card);
 		if (err > 0)
-			mmc_sd_go_highspeed(card);
+			mmc_set_timing(card->host, MMC_TIMING_SD_HS);
 		else if (err)
 			goto remove;
 
@@ -902,11 +948,11 @@ out:
 }
 
 /*
- * SDIO suspend.  We need to suspend all functions separately.
+ * SDIO pre_suspend.  We need to suspend all functions separately.
  * Therefore all registered functions must have drivers with suspend
  * and resume methods.  Failing that we simply remove the whole card.
  */
-static int mmc_sdio_suspend(struct mmc_host *host)
+static int mmc_sdio_pre_suspend(struct mmc_host *host)
 {
 	int i, err = 0;
 
@@ -917,32 +963,36 @@ static int mmc_sdio_suspend(struct mmc_host *host)
 			if (!pmops || !pmops->suspend || !pmops->resume) {
 				/* force removal of entire card in that case */
 				err = -ENOSYS;
-			} else
-				err = pmops->suspend(&func->dev);
-			if (err)
 				break;
+			}
 		}
-	}
-	while (err && --i >= 0) {
-		struct sdio_func *func = host->card->sdio_func[i];
-		if (func && sdio_func_present(func) && func->dev.driver) {
-			const struct dev_pm_ops *pmops = func->dev.driver->pm;
-			pmops->resume(&func->dev);
-		}
-	}
-
-	if (!err && mmc_card_keep_power(host) && mmc_card_wake_sdio_irq(host)) {
-		mmc_claim_host(host);
-		sdio_disable_wide(host->card);
-		mmc_release_host(host);
 	}
 
 	return err;
 }
 
+/*
+ * SDIO suspend.  Suspend all functions separately.
+ */
+static int mmc_sdio_suspend(struct mmc_host *host)
+{
+
+	if (mmc_card_keep_power(host) && mmc_card_wake_sdio_irq(host)) {
+		mmc_claim_host(host);
+		sdio_disable_wide(host->card);
+		mmc_release_host(host);
+	}
+
+	if (!mmc_card_keep_power(host)){
+	    mmc_power_off(host);
+	}
+
+	return 0;
+}
+
 static int mmc_sdio_resume(struct mmc_host *host)
 {
-	int i, err = 0;
+	int err = 0;
 
 	BUG_ON(!host);
 	BUG_ON(!host->card);
@@ -950,12 +1000,33 @@ static int mmc_sdio_resume(struct mmc_host *host)
 	/* Basic card reinitialization. */
 	mmc_claim_host(host);
 
+	/* Restore power if needed */
+	if (!mmc_card_keep_power(host)) {
+        mmc_power_up(host,host->card->ocr);
+		/*
+		 * Tell runtime PM core we just powered up the card,
+		 * since it still believes the card is powered off.
+		 * Note that currently runtime PM is only enabled
+		 * for SDIO cards that are MMC_CAP_POWER_OFF_CARD
+		 */
+		if (host->caps & MMC_CAP_POWER_OFF_CARD) {
+			pm_runtime_disable(&host->card->dev);
+			pm_runtime_set_active(&host->card->dev);
+			pm_runtime_enable(&host->card->dev);
+		}
+	}
+
 	/* No need to reinitialize powered-resumed nonremovable cards */
 	if (mmc_card_is_removable(host) || !mmc_card_keep_power(host)) {
-		sdio_reset(host);
-		mmc_go_idle(host);
-		err = mmc_sdio_init_card(host, host->ocr, host->card,
-					mmc_card_keep_power(host));
+		//via modem slave sdio does NOT need reset
+		if( !(host->caps2 & MMC_CAP2_SUPPORT_VIA_MODEM) ) {
+			sdio_reset(host);
+			mmc_go_idle(host);
+			err = mmc_sdio_init_card(host, host->card->ocr, host->card,
+									mmc_card_keep_power(host));
+		} else {
+			pr_info("%s %d %s has MMC_CAP2_SUPPORT_VIA_MODEM, does NOT need to reset\n", __func__, __LINE__, mmc_hostname(host));
+		}
 	} else if (mmc_card_keep_power(host) && mmc_card_wake_sdio_irq(host)) {
 		/* We may have switched to 1-bit mode during suspend */
 		err = sdio_enable_4bit_bus(host->card);
@@ -969,31 +1040,12 @@ static int mmc_sdio_resume(struct mmc_host *host)
 		wake_up_process(host->sdio_irq_thread);
 	mmc_release_host(host);
 
-	/*
-	 * If the card looked to be the same as before suspending, then
-	 * we proceed to resume all card functions.  If one of them returns
-	 * an error then we simply return that error to the core and the
-	 * card will be redetected as new.  It is the responsibility of
-	 * the function driver to perform further tests with the extra
-	 * knowledge it has of the card to confirm the card is indeed the
-	 * same as before suspending (same MAC address for network cards,
-	 * etc.) and return an error otherwise.
-	 */
-	for (i = 0; !err && i < host->card->sdio_funcs; i++) {
-		struct sdio_func *func = host->card->sdio_func[i];
-		if (func && sdio_func_present(func) && func->dev.driver) {
-			const struct dev_pm_ops *pmops = func->dev.driver->pm;
-			err = pmops->resume(&func->dev);
-		}
-	}
-
 	return err;
 }
 
 static int mmc_sdio_power_restore(struct mmc_host *host)
 {
 	int ret;
-	u32 ocr;
 
 	BUG_ON(!host);
 	BUG_ON(!host->card);
@@ -1015,32 +1067,17 @@ static int mmc_sdio_power_restore(struct mmc_host *host)
 	 * for OLPC SD8686 (which expects a [CMD5,5,3,7] init sequence), and
 	 * harmless in other situations.
 	 *
-	 * With these steps taken, mmc_select_voltage() is also required to
-	 * restore the correct voltage setting of the card.
 	 */
 
 	sdio_reset(host);
 	mmc_go_idle(host);
 	mmc_send_if_cond(host, host->ocr_avail);
 
-	ret = mmc_send_io_op_cond(host, 0, &ocr);
+	ret = mmc_send_io_op_cond(host, 0, NULL);
 	if (ret)
 		goto out;
 
-	if (host->ocr_avail_sdio)
-		host->ocr_avail = host->ocr_avail_sdio;
-
-	host->ocr = mmc_select_voltage(host, ocr & ~0x7F);
-	if (!host->ocr) {
-		ret = -EINVAL;
-		goto out;
-	}
-
-	if (mmc_host_uhs(host))
-		/* to query card if 1.8V signalling is supported */
-		host->ocr |= R4_18V_PRESENT;
-
-	ret = mmc_sdio_init_card(host, host->ocr, host->card,
+	ret = mmc_sdio_init_card(host, host->card->ocr, host->card,
 				mmc_card_keep_power(host));
 	if (!ret && host->sdio_irqs)
 		mmc_signal_sdio_irq(host);
@@ -1051,11 +1088,28 @@ out:
 	return ret;
 }
 
+static int mmc_sdio_runtime_suspend(struct mmc_host *host)
+{
+	/* No references to the card, cut the power to it. */
+	mmc_power_off(host);
+	return 0;
+}
+
+static int mmc_sdio_runtime_resume(struct mmc_host *host)
+{
+	/* Restore power and re-initialize. */
+	mmc_power_up(host, host->card->ocr);
+	return mmc_sdio_power_restore(host);
+}
+
 static const struct mmc_bus_ops mmc_sdio_ops = {
 	.remove = mmc_sdio_remove,
 	.detect = mmc_sdio_detect,
+	.pre_suspend = mmc_sdio_pre_suspend,
 	.suspend = mmc_sdio_suspend,
 	.resume = mmc_sdio_resume,
+	.runtime_suspend = mmc_sdio_runtime_suspend,
+	.runtime_resume = mmc_sdio_runtime_resume,
 	.power_restore = mmc_sdio_power_restore,
 	.alive = mmc_sdio_alive,
 };
@@ -1067,8 +1121,12 @@ static const struct mmc_bus_ops mmc_sdio_ops = {
 int mmc_attach_sdio(struct mmc_host *host)
 {
 	int err, i, funcs;
-	u32 ocr;
+	u32 ocr, rocr;
 	struct mmc_card *card;
+#ifdef CONFIG_HUAWEI_DSM
+	/*struct mmc_host point  to struct dw_mci point*/
+	struct dw_mci_slot *slot = mmc_priv(host);
+#endif
 
 	BUG_ON(!host);
 	WARN_ON(!host->claimed);
@@ -1081,23 +1139,13 @@ int mmc_attach_sdio(struct mmc_host *host)
 	if (host->ocr_avail_sdio)
 		host->ocr_avail = host->ocr_avail_sdio;
 
-	/*
-	 * Sanity check the voltages that the card claims to
-	 * support.
-	 */
-	if (ocr & 0x7F) {
-		pr_warning("%s: card claims to support voltages "
-		       "below the defined range. These will be ignored.\n",
-		       mmc_hostname(host));
-		ocr &= ~0x7F;
-	}
 
-	host->ocr = mmc_select_voltage(host, ocr);
+	rocr = mmc_select_voltage(host, ocr);
 
 	/*
 	 * Can we support the voltage(s) of the card(s)?
 	 */
-	if (!host->ocr) {
+	if (!rocr) {
 		err = -EINVAL;
 		goto err;
 	}
@@ -1105,22 +1153,10 @@ int mmc_attach_sdio(struct mmc_host *host)
 	/*
 	 * Detect and init the card.
 	 */
-	if (mmc_host_uhs(host))
-		/* to query card if 1.8V signalling is supported */
-		host->ocr |= R4_18V_PRESENT;
+	err = mmc_sdio_init_card(host, rocr, NULL, 0);
+	if (err)
+		goto err;
 
-	err = mmc_sdio_init_card(host, host->ocr, NULL, 0);
-	if (err) {
-		if (err == -EAGAIN) {
-			/*
-			 * Retry initialization with S18R set to 0.
-			 */
-			host->ocr &= ~R4_18V_PRESENT;
-			err = mmc_sdio_init_card(host, host->ocr, NULL, 0);
-		}
-		if (err)
-			goto err;
-	}
 	card = host->card;
 
 	/*
@@ -1147,14 +1183,36 @@ int mmc_attach_sdio(struct mmc_host *host)
 	funcs = (ocr & 0x70000000) >> 28;
 	card->sdio_funcs = 0;
 
+#ifdef CONFIG_MMC_EMBEDDED_SDIO
+	if (host->embedded_sdio_data.funcs)
+		card->sdio_funcs = funcs = host->embedded_sdio_data.num_funcs;
+#endif
+
 	/*
 	 * Initialize (but don't add) all present functions.
 	 */
 	for (i = 0; i < funcs; i++, card->sdio_funcs++) {
-		err = sdio_init_func(host->card, i + 1);
-		if (err)
-			goto remove;
+#ifdef CONFIG_MMC_EMBEDDED_SDIO
+		if (host->embedded_sdio_data.funcs) {
+			struct sdio_func *tmp;
 
+			tmp = sdio_alloc_func(host->card);
+			if (IS_ERR(tmp))
+				goto remove;
+			tmp->num = (i + 1);
+			card->sdio_func[i] = tmp;
+			tmp->class = host->embedded_sdio_data.funcs[i].f_class;
+			tmp->max_blksize = host->embedded_sdio_data.funcs[i].f_maxblksize;
+			tmp->vendor = card->cis.vendor;
+			tmp->device = card->cis.device;
+		} else {
+#endif
+			err = sdio_init_func(host->card, i + 1);
+			if (err)
+				goto remove;
+#ifdef CONFIG_MMC_EMBEDDED_SDIO
+		}
+#endif
 		/*
 		 * Enable Runtime PM for this func (if supported)
 		 */
@@ -1198,7 +1256,61 @@ err:
 
 	pr_err("%s: error %d whilst initialising SDIO card\n",
 		mmc_hostname(host), err);
-
+#ifdef CONFIG_HUAWEI_DSM
+	dw_mci_dsm_dump(slot->host, DSM_SDIO_ATTACH_ERR_NO);
+#endif
 	return err;
 }
 
+int sdio_reset_comm(struct mmc_card *card)
+{
+	struct mmc_host *host = card->host;
+	u32 ocr, rocr;
+	int err;
+
+	printk("%s():\n", __func__);
+	mmc_claim_host(host);
+
+	mmc_set_timing(host, MMC_TIMING_LEGACY);
+	mmc_set_clock(host, 100000); /* enum with 100K clock */
+
+	/*
+	 * sdio_reset() is technically not needed. Having just powered up the
+	 * hardware, it should already be in reset state. However, some
+	 * platforms do not instantly cut power,
+	 * meaning that a reset is required when restoring power soon after
+	 * powering off. It is harmless in other cases.
+	*/
+	sdio_reset(host);
+	mmc_go_idle(host);
+
+	err = mmc_send_io_op_cond(host, 0, &ocr);
+	if (err)
+		goto err;
+
+	if (host->ocr_avail_sdio)
+		host->ocr_avail = host->ocr_avail_sdio;
+
+	rocr = mmc_select_voltage(host, ocr);
+	if (!rocr) {
+		err = -EINVAL;
+		goto err;
+	}
+
+	if (mmc_host_uhs(host))
+		/* to query card if 1.8V signalling is supported */
+		rocr |= R4_18V_PRESENT;
+
+	err = mmc_sdio_init_card(host, rocr, card, 0);
+	if (err)
+		goto err;
+
+	mmc_release_host(host);
+	return 0;
+err:
+	printk("%s: Error resetting SDIO communications (%d)\n",
+	       mmc_hostname(host), err);
+	mmc_release_host(host);
+	return err;
+}
+EXPORT_SYMBOL(sdio_reset_comm);

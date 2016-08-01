@@ -49,6 +49,11 @@
 
 #define MPAGE_DA_EXTENT_TAIL 0x01
 
+#include <trace/iotrace.h>
+DEFINE_TRACE(ext4_da_write_begin_end);
+DEFINE_TRACE(mpage_da_map_and_submit);
+
+
 static __u32 ext4_inode_csum(struct inode *inode, struct ext4_inode *raw,
 			      struct ext4_inode_info *ei)
 {
@@ -1757,6 +1762,7 @@ static void mpage_da_map_and_submit(struct mpage_da_data *mpd)
 		return;
 	}
 	BUG_ON(blks == 0);
+    trace_mpage_da_map_and_submit(mpd->inode, map.m_pblk, map.m_len);
 
 	mapp = &map;
 	if (map.m_flags & EXT4_MAP_NEW) {
@@ -2715,7 +2721,10 @@ static int ext4_da_write_begin(struct file *file, struct address_space *mapping,
 		if (ret < 0)
 			return ret;
 		if (ret == 1)
+        {
+	        trace_ext4_da_write_begin_end(inode, pos, len, flags);
 			return 0;
+        }
 	}
 
 	/*
@@ -2776,7 +2785,9 @@ retry_journal:
 		return ret;
 	}
 
+	trace_ext4_da_write_begin_end(inode, pos, len, flags);
 	*pagep = page;
+
 	return ret;
 }
 

@@ -2408,7 +2408,7 @@ CMD_STATUS csMgmt_xmit(PSDevice pDevice, PSTxMgmtPacket pPacket) {
 	pDevice->apCurrTD[TYPE_TXDMA0] = pFrstTD->next;
 
 #ifdef TxInSleep
-	pDevice->nTxDataTimeCout = 0; //2008-8-21 chester <add> for send null packet
+	pDevice->nTxDataTimeCout = 0;
 #endif
 
 	// Poll Transmit the adapter

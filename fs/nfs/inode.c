@@ -79,7 +79,7 @@ int nfs_wait_bit_killable(void *word)
 {
 	if (fatal_signal_pending(current))
 		return -ERESTARTSYS;
-	freezable_schedule();
+	freezable_schedule_unsafe();
 	return 0;
 }
 EXPORT_SYMBOL_GPL(nfs_wait_bit_killable);
@@ -1047,12 +1047,12 @@ static atomic_long_t nfs_attr_generation_counter;
 
 static unsigned long nfs_read_attr_generation_counter(void)
 {
-	return atomic_long_read(&nfs_attr_generation_counter);
+	return (unsigned long)atomic_long_read(&nfs_attr_generation_counter);
 }
 
 unsigned long nfs_inc_attr_generation_counter(void)
 {
-	return atomic_long_inc_return(&nfs_attr_generation_counter);
+	return (unsigned long)atomic_long_inc_return(&nfs_attr_generation_counter);
 }
 
 void nfs_fattr_init(struct nfs_fattr *fattr)

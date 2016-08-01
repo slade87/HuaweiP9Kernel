@@ -348,7 +348,7 @@ void _rxadc_dc_offset_cancellation_winbond(struct hw_data *phw_data, u32 frequen
 
 	/* set calibration channel */
 	if ((RF_WB_242 == phw_data->phy_type) ||
-		(RF_WB_242_1 == phw_data->phy_type)) /* 20060619.5 Add */{
+		(RF_WB_242_1 == phw_data->phy_type)){
 		if ((frequency >= 2412) && (frequency <= 2484)) {
 			/* w89rf242 change frequency to 2390Mhz */
 			PHY_DEBUG(("[CAL] W89RF242/11G/Channel=2390Mhz\n"));
@@ -671,7 +671,6 @@ void _txqdac_dc_offset_cacellation_winbond(struct hw_data *phw_data)
 	PHY_DEBUG(("[CAL]    MODE_CTRL (write) = 0x%08X\n", reg_mode_ctrl));
 }
 
-/* 20060612.1.a 20060718.1 Modify */
 u8 _tx_iq_calibration_loop_winbond(struct hw_data *phw_data,
 						   s32 a_2_threshold,
 						   s32 b_2_threshold)
@@ -715,7 +714,7 @@ u8 _tx_iq_calibration_loop_winbond(struct hw_data *phw_data,
 
 		iqcal_tone_i_avg = 0;
 		iqcal_tone_q_avg = 0;
-		if (!hw_set_dxx_reg(phw_data, 0x3C, 0x00)) /* 20060718.1 modify */
+		if (!hw_set_dxx_reg(phw_data, 0x3C, 0x00))
 			return 0;
 		for (capture_time = 0; capture_time < 10; capture_time++) {
 			/*
@@ -983,7 +982,7 @@ void _tx_iq_calibration_winbond(struct hw_data *phw_data)
 	/* ; [BB-chip]: Calibration (6h). Calculate TX-path IQ imbalance and setting TX path IQ compensation table */
 	/* phy_set_rf_data(phw_data, 3, (3<<24)|0x025586); */
 
-	msleep(30); /* 20060612.1.a 30ms delay. Add the follow 2 lines */
+	msleep(30);
 	/* To adjust TXVGA to fit iq_mag_0 range from 1250 ~ 1750 */
 	adjust_TXVGA_for_iq_mag(phw_data);
 
@@ -1156,7 +1155,7 @@ u8 _rx_iq_calibration_loop_winbond(struct hw_data *phw_data, u16 factor, u32 fre
 		for (capture_time = 0; capture_time < 10; capture_time++) {
 			/* i. Set "calib_start" to 0x0 */
 			reg_mode_ctrl &= ~MASK_CALIB_START;
-			if (!hw_set_dxx_reg(phw_data, REG_MODE_CTRL, reg_mode_ctrl))/*20060718.1 modify */
+			if (!hw_set_dxx_reg(phw_data, REG_MODE_CTRL, reg_mode_ctrl))
 				return 0;
 			PHY_DEBUG(("[CAL]    MODE_CTRL (write) = 0x%08X\n", reg_mode_ctrl));
 
@@ -1497,7 +1496,7 @@ void phy_set_rf_data(struct hw_data *pHwData, u32 index, u32 value)
 		break;
 
 	case RF_AIROHA_2230:
-	case RF_AIROHA_2230S: /* 20060420 Add this */
+	case RF_AIROHA_2230S:
 		ltmp = (1 << 31) | (0 << 30) | (20 << 24) | BitReverse(value, 20);
 		break;
 
@@ -1506,7 +1505,7 @@ void phy_set_rf_data(struct hw_data *pHwData, u32 index, u32 value)
 		break;
 
 	case RF_WB_242:
-	case RF_WB_242_1:/* 20060619.5 Add */
+	case RF_WB_242_1:
 		ltmp = (1 << 31) | (0 << 30) | (24 << 24) | BitReverse(value, 24);
 		break;
 	}
@@ -1514,7 +1513,6 @@ void phy_set_rf_data(struct hw_data *pHwData, u32 index, u32 value)
 	Wb35Reg_WriteSync(pHwData, 0x0864, ltmp);
 }
 
-/* 20060717 modify as Bruce's mail */
 unsigned char adjust_TXVGA_for_iq_mag(struct hw_data *phw_data)
 {
 	int init_txvga = 0;
@@ -1536,7 +1534,7 @@ unsigned char adjust_TXVGA_for_iq_mag(struct hw_data *phw_data)
 
 		msleep(30);/* 20060612.1.a */
 
-		if (!hw_get_dxx_reg(phw_data, REG_MODE_CTRL, &reg_mode_ctrl))/* 20060718.1 modify */
+		if (!hw_get_dxx_reg(phw_data, REG_MODE_CTRL, &reg_mode_ctrl))
 			return false;
 
 		PHY_DEBUG(("[CAL]    MODE_CTRL (read) = 0x%08X\n", reg_mode_ctrl));

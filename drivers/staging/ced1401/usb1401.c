@@ -1,87 +1,4 @@
-/***********************************************************************************
- CED1401 usb driver. This basic loading is based on the usb-skeleton.c code that is:
- Copyright (C) 2001-2004 Greg Kroah-Hartman (greg@kroah.com)
- Copyright (C) 2012 Alois Schloegl <alois.schloegl@ist.ac.at>
- There is not a great deal of the skeleton left.
 
- All the remainder dealing specifically with the CED1401 is based on drivers written
- by CED for other systems (mainly Windows) and is:
- Copyright (C) 2010 Cambridge Electronic Design Ltd
- Author Greg P Smith (greg@ced.co.uk)
-
- This program is free software; you can redistribute it and/or
- modify it under the terms of the GNU General Public License
- as published by the Free Software Foundation; either version 2
- of the License, or (at your option) any later version.
-
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
-
- You should have received a copy of the GNU General Public License
- along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-
-Endpoints
-*********
-There are 4 endpoints plus the control endpoint in the standard interface
-provided by most 1401s. The control endpoint is used for standard USB requests,
-plus various CED-specific transactions such as start self test, debug and get
-the 1401 status. The other endpoints are:
-
- 1 Characters to the 1401
- 2 Characters from the 1401
- 3 Block data to the 1401
- 4 Block data to the host.
-
-inside the driver these are indexed as an array from 0 to 3, transactions
-over the control endpoint are carried out using a separate mechanism. The
-use of the endpoints is mostly straightforward, with the driver issuing
-IO request packets (IRPs) as required to transfer data to and from the 1401.
-The handling of endpoint 2 is different because it is used for characters
-from the 1401, which can appear spontaneously and without any other driver
-activity - for example to repeatedly request DMA transfers in Spike2. The
-desired effect is achieved by using an interrupt endpoint which can be
-polled to see if it has data available, and writing the driver so that it
-always maintains a pending read IRP from that endpoint which will read the
-character data and terminate as soon as the 1401 makes data available. This
-works very well, some care is taken with when you kick off this character
-read IRP to avoid it being active when it is not wanted but generally it
-is running all the time.
-
-In the 2270, there are only three endpoints plus the control endpoint. In
-addition to the transactions mentioned above, the control endpoint is used
-to transfer character data to the 1401. The other endpoints are used as:
-
- 1 Characters from the 1401
- 2 Block data to the 1401
- 3 Block data to the host.
-
-The type of interface available is specified by the interface subclass field
-in the interface descriptor provided by the 1401. See the USB_INT_ constants
-for the values that this field can hold.
-
-****************************************************************************
-Linux implementation
-
-Although Linux Device Drivers (3rd Edition) was a major source of information,
-it is very out of date. A lot of information was gleaned from the latest
-usb_skeleton.c code (you need to download the kernel sources to get this).
-
-To match the Windows version, everything is done using ioctl calls. All the
-device state is held in the DEVICE_EXTENSION (named to match Windows use).
-Block transfers are done by using get_user_pages() to pin down a list of
-pages that we hold a pointer to in the device driver. We also allocate a
-coherent transfer buffer of size STAGED_SZ (this must be a multiple of the
-bulk endpoint size so that the 1401 does not realise that we break large
-transfers down into smaller pieces). We use kmap_atomic() to get a kernel
-va for each page, as it is required, for copying; see CopyUserSpace().
-
-All character and data transfers are done using asynchronous IO. All Urbs are
-tracked by anchoring them. Status and debug ioctls are implemented with the
-synchronous non-Urb based transfers.
-*/
 
 #include <linux/kernel.h>
 #include <linux/errno.h>
@@ -552,7 +469,6 @@ static void staged_callback(struct urb *pUrb)
 
 		// Here is where we sort out what to do with this transfer if using a circular buffer. We have
 		//  a completed transfer that can be assumed to fit into the transfer area. We should be able to
-		//  add this to the end of a growing block or to use it to start a new block unless the code
 		//  that calculates the offset to use (in ReadWriteMem) is totally duff.
 		if ((pArea->bCircular) && (pArea->bCircToHost) && (!bCancel) &&	// Time to sort out circular buffer info?
 		    (pdx->StagedRead))	// Only for tohost transfers for now

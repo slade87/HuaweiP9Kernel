@@ -78,4 +78,12 @@ config ARM_EXYNOS4_BUS_DEVFREQ
 	  To operate with optimal voltages, ASV support is required
 	  (CONFIG_EXYNOS_ASV).
 
+config HISI_DDR_CHINTLV
+	bool "Hisilicon ddr devfreq chintlv"
+	default n
+	help
+	  Deliver register address of GLB_ADDR_INTLV to ATF.
+
+source "drivers/devfreq/hisi/Kconfig"
+
 endif # PM_DEVFREQ

@@ -31,6 +31,9 @@
 #include "xattr.h"
 #include "acl.h"
 
+#include <linux/mmc/mmc.h>
+#include <linux/types.h>
+
 /*
  * Called when an inode is released. Note that this is different
  * from ext4_file_open: open gets called at every open, but release
@@ -450,7 +453,6 @@ static loff_t ext4_seek_data(struct file *file, loff_t offset, loff_t maxsize)
 	last = start;
 	end = isize >> blkbits;
 	dataoff = offset;
-
 	do {
 		map.m_lblk = last;
 		map.m_len = end - last + 1;
@@ -622,11 +624,79 @@ loff_t ext4_llseek(struct file *file, loff_t offset, int whence)
 
 	return -EINVAL;
 }
+char *getfullpath(struct inode *inod,char* buffer,int len)
+{
+	struct hlist_node* plist = NULL;
+	struct dentry* tmp = NULL;
+	struct dentry* dent = NULL;
+	char* name = NULL;
+	struct inode* pinode = inod;
+
+	buffer[len - 1] = '\0';
+	if(pinode == NULL)
+		return NULL;
+
+	hlist_for_each(plist,&pinode->i_dentry)
+	{
+		tmp = hlist_entry(plist,struct dentry,d_u.d_alias);
+		if(tmp->d_inode == pinode)
+		{
+			dent = tmp;
+			break;
+		}
+	}
+	if(dent == NULL)
+	{
+		return NULL;
+	}
+
+	name= dentry_path_raw(dent, buffer, len);
+	return name;
+}
+
+#define FULL_PATH_LEN 1024
+ssize_t ext4_do_sync_read(struct file *filp, char __user *buf, size_t len, loff_t *ppos)
+{
+	ssize_t ret;
+	char full_path[FULL_PATH_LEN]="";
+	char *retval=full_path;
+	
+	if(0 != (cmdlog_enable_flag & EXT4_EN)){
+		retval=dentry_path_raw(filp->f_path.dentry, full_path, sizeof(full_path));
+		printk("%s: enter. len=%lu, file=%s\n", __func__, len, retval);
+	}
+	
+	ret = do_sync_read(filp, buf, len, ppos);
+	
+	if(0 != (cmdlog_enable_flag & EXT4_EN)){
+		printk("%s: exit. len=%lu, file=%s\n", __func__, len, retval);
+	}
+	return ret;
+}
+
+ssize_t ext4_do_sync_write(struct file *filp, const char __user *buf, size_t len, loff_t *ppos)
+{
+	ssize_t ret;
+	char full_path[FULL_PATH_LEN]="";
+	char *retval=full_path;
+	
+	if(0 != (cmdlog_enable_flag & EXT4_EN)){
+		retval=dentry_path_raw(filp->f_path.dentry, full_path, sizeof(full_path));
+		printk("%s: enter. len=%lu, file=%s\n", __func__, len, retval);
+	}
+
+	ret = do_sync_write(filp, buf, len, ppos);
+	
+	if(0 != (cmdlog_enable_flag & EXT4_EN)){
+		printk("%s: exit. len=%lu, file=%s\n", __func__, len, retval);
+	}
+	return ret;
+}
 
 const struct file_operations ext4_file_operations = {
 	.llseek		= ext4_llseek,
-	.read		= do_sync_read,
-	.write		= do_sync_write,
+	.read		= ext4_do_sync_read,
+	.write		= ext4_do_sync_write,
 	.aio_read	= generic_file_aio_read,
 	.aio_write	= ext4_file_write,
 	.unlocked_ioctl = ext4_ioctl,

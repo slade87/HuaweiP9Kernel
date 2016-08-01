@@ -122,8 +122,8 @@ static int signalfd_copyinfo(struct signalfd_siginfo __user *uinfo,
 		 * so check explicitly for the right codes here.
 		 */
 		if (kinfo->si_signo == SIGBUS &&
-		    (kinfo->si_code == BUS_MCEERR_AR ||
-		     kinfo->si_code == BUS_MCEERR_AO))
+		   (kinfo->si_code == BUS_MCEERR_AR ||
+		    kinfo->si_code == BUS_MCEERR_AO))
 			err |= __put_user((short) kinfo->si_addr_lsb,
 					  &uinfo->ssi_addr_lsb);
 #endif

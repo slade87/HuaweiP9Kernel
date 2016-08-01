@@ -28,8 +28,7 @@
 #define FFS_CAPABLE	(1<<2)
 #define DISPLAY_CAPABLE (1<<3)
 
-/* Platform Family types
- * For compitability, the new value must be added in the end */
+
 enum family_type {
 	FAMILY_8500,
 	FAMILY_8500RNG,

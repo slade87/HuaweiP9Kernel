@@ -5,6 +5,7 @@
 ccflags-$(CONFIG_USB_DEBUG) := -DDEBUG
 
 obj-$(CONFIG_USB_PHY)			+= phy.o
+obj-$(CONFIG_USB_OTG_WAKELOCK)		+= otg-wakelock.o
 
 # transceiver drivers, keep the list sorted
 
@@ -31,3 +32,6 @@ obj-$(CONFIG_USB_MXS_PHY)		+= phy-mxs-usb.o
 obj-$(CONFIG_USB_RCAR_PHY)		+= phy-rcar-usb.o
 obj-$(CONFIG_USB_ULPI)			+= phy-ulpi.o
 obj-$(CONFIG_USB_ULPI_VIEWPORT)		+= phy-ulpi-viewport.o
+obj-$(CONFIG_HISI_USBPHY)               += phy-hisi-usb.o
+obj-$(CONFIG_HISI_USB3PHY)              += phy-hisi-usb3.o
+obj-$(CONFIG_HISI_USB2PHY)              += phy-hisi-usb2.o

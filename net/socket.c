@@ -105,6 +105,10 @@
 #include <linux/sockios.h>
 #include <linux/atalk.h>
 
+#ifdef CONFIG_HUAWEI_BASTET
+#include <huawei_platform/power/bastet/bastet.h>
+#endif
+
 static int sock_no_open(struct inode *irrelevant, struct file *dontcare);
 static ssize_t sock_aio_read(struct kiocb *iocb, const struct iovec *iov,
 			 unsigned long nr_segs, loff_t pos);
@@ -1045,6 +1049,12 @@ static long sock_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 	struct net *net;
 
 	sock = file->private_data;
+#ifdef CONFIG_HUAWEI_BASTET
+	err = bastet_check_reconn(sock);
+	if (err < 0) {
+		return err;
+	}
+#endif
 	sk = sock->sk;
 	net = sock_net(sk);
 	if (cmd >= SIOCDEVPRIVATE && cmd <= (SIOCDEVPRIVATE + 15)) {
@@ -1699,6 +1709,12 @@ SYSCALL_DEFINE3(getsockname, int, fd, struct sockaddr __user *, usockaddr,
 	if (!sock)
 		goto out;
 
+#ifdef CONFIG_HUAWEI_BASTET
+	err = bastet_check_reconn(sock);
+	if (err < 0) {
+		goto out_put;
+	}
+#endif
 	err = security_socket_getsockname(sock);
 	if (err)
 		goto out_put;
@@ -1728,6 +1744,14 @@ SYSCALL_DEFINE3(getpeername, int, fd, struct sockaddr __user *, usockaddr,
 
 	sock = sockfd_lookup_light(fd, &err, &fput_needed);
 	if (sock != NULL) {
+
+#ifdef CONFIG_HUAWEI_BASTET
+		err = bastet_check_reconn(sock);
+		if (err < 0) {
+			fput_light(sock->file, fput_needed);
+			return err;
+		}
+#endif
 		err = security_socket_getpeername(sock);
 		if (err) {
 			fput_light(sock->file, fput_needed);
@@ -1768,6 +1792,12 @@ SYSCALL_DEFINE6(sendto, int, fd, void __user *, buff, size_t, len,
 	if (!sock)
 		goto out;
 
+#ifdef CONFIG_HUAWEI_BASTET
+	err = bastet_check_reconn(sock);
+	if (err < 0) {
+		goto out_put;
+	}
+#endif
 	iov.iov_base = buff;
 	iov.iov_len = len;
 	msg.msg_name = NULL;
@@ -1849,6 +1879,9 @@ SYSCALL_DEFINE6(recvfrom, int, fd, void __user *, ubuf, size_t, size,
 	}
 
 	fput_light(sock->file, fput_needed);
+#ifdef CONFIG_HUAWEI_BASTET
+	bastet_close_sock(sock, err);
+#endif
 out:
 	return err;
 }
@@ -1879,6 +1912,12 @@ SYSCALL_DEFINE5(setsockopt, int, fd, int, level, int, optname,
 
 	sock = sockfd_lookup_light(fd, &err, &fput_needed);
 	if (sock != NULL) {
+#ifdef CONFIG_HUAWEI_BASTET
+		err = bastet_check_reconn(sock);
+		if (err < 0) {
+			goto out_put;
+		}
+#endif
 		err = security_socket_setsockopt(sock, level, optname);
 		if (err)
 			goto out_put;
@@ -1910,6 +1949,12 @@ SYSCALL_DEFINE5(getsockopt, int, fd, int, level, int, optname,
 
 	sock = sockfd_lookup_light(fd, &err, &fput_needed);
 	if (sock != NULL) {
+#ifdef CONFIG_HUAWEI_BASTET
+		err = bastet_check_reconn(sock);
+		if (err < 0) {
+			goto out_put;
+		}
+#endif
 		err = security_socket_getsockopt(sock, level, optname);
 		if (err)
 			goto out_put;
@@ -3332,6 +3377,13 @@ static long compat_sock_ioctl(struct file *file, unsigned int cmd,
 	struct sock *sk;
 	struct net *net;
 
+#ifdef CONFIG_HUAWEI_BASTET
+	ret = bastet_check_reconn(sock);
+	if (ret < 0) {
+		return ret;
+	}
+	ret = -ENOIOCTLCMD;
+#endif
 	sk = sock->sk;
 	net = sock_net(sk);
 

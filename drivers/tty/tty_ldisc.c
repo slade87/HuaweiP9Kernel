@@ -344,10 +344,11 @@ void tty_ldisc_deref(struct tty_ldisc *ld)
 	 * - the last reference must be released with tty_ldisc_put
 	 */
 	WARN_ON(atomic_dec_and_test(&ld->users));
-	raw_spin_unlock_irqrestore(&tty_ldisc_lock, flags);
 
 	if (waitqueue_active(&ld->wq_idle))
 		wake_up(&ld->wq_idle);
+
+	raw_spin_unlock_irqrestore(&tty_ldisc_lock, flags);
 }
 EXPORT_SYMBOL_GPL(tty_ldisc_deref);
 
@@ -650,8 +651,6 @@ int tty_set_ldisc(struct tty_struct *tty, int ldisc)
 
 	tty->receive_room = 0;
 
-	o_ldisc = tty->ldisc;
-
 	tty_unlock(tty);
 	/*
 	 *	Make sure we don't change while someone holds a
@@ -673,6 +672,9 @@ int tty_set_ldisc(struct tty_struct *tty, int ldisc)
 
 	mutex_unlock(&tty->ldisc_mutex);
 
+	/*
+	 * Maybe reinit tty->ldisc
+	 */
 	flush_work(&tty->hangup_work);
 
 	tty_lock(tty);
@@ -695,6 +697,7 @@ int tty_set_ldisc(struct tty_struct *tty, int ldisc)
 	}
 
 	/* Shutdown the current discipline. */
+	o_ldisc = tty->ldisc;
 	tty_ldisc_close(tty, o_ldisc);
 
 	/* Now set up the new line discipline. */

@@ -51,6 +51,7 @@ int dw_mci_pltfm_register(struct platform_device *pdev,
 	if (IS_ERR(host->regs))
 		return PTR_ERR(host->regs);
 
+    /*私有IP数据初始化*/
 	if (drv_data && drv_data->init) {
 		ret = drv_data->init(host);
 		if (ret)
@@ -58,6 +59,7 @@ int dw_mci_pltfm_register(struct platform_device *pdev,
 	}
 
 	platform_set_drvdata(pdev, host);
+
 	ret = dw_mci_probe(host);
 	return ret;
 }
@@ -68,7 +70,7 @@ static int dw_mci_pltfm_probe(struct platform_device *pdev)
 	return dw_mci_pltfm_register(pdev, NULL);
 }
 
-static int dw_mci_pltfm_remove(struct platform_device *pdev)
+int dw_mci_pltfm_remove(struct platform_device *pdev)
 {
 	struct dw_mci *host = platform_get_drvdata(pdev);
 

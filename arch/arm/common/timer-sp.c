@@ -32,6 +32,8 @@
 #include <asm/sched_clock.h>
 #include <asm/hardware/arm_timer.h>
 #include <asm/hardware/timer-sp.h>
+#include "soc_baseaddr_interface.h"
+#include "soc_ao_sctrl_interface.h"
 
 static long __init sp804_get_clock_rate(struct clk *clk)
 {
@@ -208,13 +210,14 @@ void __init __sp804_clockevents_init(void __iomem *base, unsigned int irq, struc
 	clockevents_config_and_register(evt, rate, 0xf, 0xffffffff);
 }
 
-static void __init sp804_of_init(struct device_node *np)
+ void __init sp804_of_init(struct device_node *np)
 {
 	static bool initialized = false;
 	void __iomem *base;
 	int irq;
 	u32 irq_num = 0;
-	struct clk *clk1, *clk2;
+	struct clk *clk1 = 0;
+	struct clk *clk2 = 0;
 	const char *name = of_get_property(np, "compatible", NULL);
 
 	base = of_iomap(np, 0);
@@ -256,6 +259,7 @@ static void __init sp804_of_init(struct device_node *np)
 		__sp804_clocksource_and_sched_clock_init(base + TIMER_2_BASE,
 							 name, clk2, 1);
 	}
+
 	initialized = true;
 
 	return;

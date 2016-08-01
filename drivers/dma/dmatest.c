@@ -24,7 +24,16 @@
 #include <linux/uaccess.h>
 #include <linux/seq_file.h>
 
+//#define DMA_MASTER_VERIFICATION
+
+#define DMA_SRC_ADDR 0x3e000000
+#define DMA_DST_ADDR 0x3e200000
+
+#ifdef DMA_MASTER_VERIFICATION
+static unsigned int test_buf_size = 4096;
+#else
 static unsigned int test_buf_size = 16384;
+#endif
 module_param(test_buf_size, uint, S_IRUGO);
 MODULE_PARM_DESC(test_buf_size, "Size of the memcpy test buffer");
 
@@ -45,8 +54,11 @@ static unsigned int max_channels;
 module_param(max_channels, uint, S_IRUGO);
 MODULE_PARM_DESC(max_channels,
 		"Maximum number of channels to use (default: all)");
-
+#ifdef DMA_MASTER_VERIFICATION
+static unsigned int iterations = 1;
+#else
 static unsigned int iterations;
+#endif
 module_param(iterations, uint, S_IRUGO);
 MODULE_PARM_DESC(iterations,
 		"Iterations before stopping test (default: infinite)");
@@ -225,6 +237,26 @@ static unsigned long dmatest_random(void)
 	get_random_bytes(&buf, sizeof(buf));
 	return buf;
 }
+
+#ifdef DMA_MASTER_VERIFICATION
+void *hisi_dmatest_mapped_address(unsigned long phy_addr, size_t size,  pgprot_t prot)
+{
+	struct page **pages;
+	void  *ioremap_base;
+
+	pages = kmalloc(sizeof(struct page *) * size, GFP_KERNEL);
+	if (!pages) {
+	pr_err("%s: Failed to allocate array for %u pages\n", __func__,size);
+	return ;
+	}
+
+	pages[0] = phys_to_page(phy_addr);
+	ioremap_base = vmap(pages, size, VM_MAP, prot);
+	kfree(pages);
+
+	return ioremap_base;
+}
+#endif
 
 static void dmatest_init_srcs(u8 **bufs, unsigned int start, unsigned int len,
 		unsigned int buf_size)
@@ -573,7 +605,11 @@ static int dmatest_func(void *data)
 	if (!thread->srcs)
 		goto err_srcs;
 	for (i = 0; i < src_cnt; i++) {
+#ifdef DMA_MASTER_VERIFICATION
+		thread->srcs[i]  = hisi_dmatest_mapped_address(DMA_SRC_ADDR, 1,  __pgprot(PROT_NORMAL_NC));
+#else
 		thread->srcs[i] = kmalloc(params->buf_size, GFP_KERNEL);
+#endif
 		if (!thread->srcs[i])
 			goto err_srcbuf;
 	}
@@ -583,7 +619,11 @@ static int dmatest_func(void *data)
 	if (!thread->dsts)
 		goto err_dsts;
 	for (i = 0; i < dst_cnt; i++) {
+#ifdef DMA_MASTER_VERIFICATION
+		thread->dsts[i]  = hisi_dmatest_mapped_address(DMA_DST_ADDR, 1,  __pgprot(PROT_NORMAL_NC));
+#else
 		thread->dsts[i] = kmalloc(params->buf_size, GFP_KERNEL);
+#endif
 		if (!thread->dsts[i])
 			goto err_dstbuf;
 	}
@@ -636,9 +676,12 @@ static int dmatest_func(void *data)
 
 		for (i = 0; i < src_cnt; i++) {
 			u8 *buf = thread->srcs[i] + src_off;
-
+			#ifdef DMA_MASTER_VERIFICATION
+			dma_srcs[i] = DMA_SRC_ADDR + src_off;
+			#else
 			dma_srcs[i] = dma_map_single(dev->dev, buf, len,
 						     DMA_TO_DEVICE);
+			#endif
 			ret = dma_mapping_error(dev->dev, dma_srcs[i]);
 			if (ret) {
 				unmap_src(dev->dev, dma_srcs, len, i);
@@ -652,9 +695,13 @@ static int dmatest_func(void *data)
 		}
 		/* map with DMA_BIDIRECTIONAL to force writeback/invalidate */
 		for (i = 0; i < dst_cnt; i++) {
+			#ifdef DMA_MASTER_VERIFICATION
+			dma_dsts[i] = DMA_DST_ADDR;
+			#else
 			dma_dsts[i] = dma_map_single(dev->dev, thread->dsts[i],
 						     params->buf_size,
 						     DMA_BIDIRECTIONAL);
+			#endif
 			ret = dma_mapping_error(dev->dev, dma_dsts[i]);
 			if (ret) {
 				unmap_src(dev->dev, dma_srcs, len, src_cnt);
@@ -785,6 +832,19 @@ static int dmatest_func(void *data)
 	}
 
 	ret = 0;
+#ifdef DMA_MASTER_VERIFICATION
+for (i = 0; thread->dsts[i]; i++)
+	vunmap(thread->dsts[i]);
+err_dstbuf:
+	kfree(thread->dsts);
+err_dsts:
+for (i = 0; thread->srcs[i]; i++)
+	vunmap(thread->srcs[i]);
+err_srcbuf:
+	kfree(thread->srcs);
+err_srcs:
+	kfree(pq_coefs);
+#else
 	for (i = 0; thread->dsts[i]; i++)
 		kfree(thread->dsts[i]);
 err_dstbuf:
@@ -796,6 +856,7 @@ err_srcbuf:
 	kfree(thread->srcs);
 err_srcs:
 	kfree(pq_coefs);
+#endif
 err_thread_type:
 	pr_notice("%s: terminating after %u tests, %u failures (status %d)\n",
 			thread_name, total_tests, failed_tests, ret);
@@ -942,6 +1003,9 @@ static int __run_threaded_test(struct dmatest_info *info)
 	dma_cap_zero(mask);
 	dma_cap_set(DMA_MEMCPY, mask);
 	for (;;) {
+#ifdef DMA_MASTER_VERIFICATION
+		mdelay(300);
+#endif
 		chan = dma_request_channel(mask, filter, params);
 		if (chan) {
 			err = dmatest_add_channel(info, chan);

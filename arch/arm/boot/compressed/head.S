@@ -1,13 +1,4 @@
-/*
- *  linux/arch/arm/boot/compressed/head.S
- *
- *  Copyright (C) 1996-2002 Russell King
- *  Copyright (C) 2004 Hyok S. Choi (MPU support)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+
 #include <linux/linkage.h>
 #include <asm/assembler.h>
 
@@ -135,6 +126,7 @@ start:
 		.word	_edata			@ zImage end address
  THUMB(		.thumb			)
 1:
+ ARM_BE8(	setend	be )			@ go BE8 if compiled for BE8
 		mrs	r9, cpsr
 #ifdef CONFIG_ARM_VIRT_EXT
 		bl	__hyp_stub_install	@ get into SVC mode, reversibly
@@ -178,11 +170,22 @@ not_angel:
 		@ determine final kernel image address
 		mov	r4, pc
 		and	r4, r4, #0xf8000000
-		add	r4, r4, #TEXT_OFFSET
+	@	add	r4, r4, #TEXT_OFFSET
+		ldr	r5, =TEXT_OFFSET
+		add	r4, r4, r5
 #else
 		ldr	r4, =zreladdr
 #endif
 
+       /*read ARM MIDR register, [bit15:4]A53:0xD03,A7:0xC07*/
+        mrc    p15, 0, r0, c0, c0, 0
+	ldr    r1,=0xFFF0
+        and    r0, r0, r1
+	ldr    r1,=0xD030
+        cmp    r0, r1
+        mrceq p15, 0, r0, c1, c0, 0
+        orreq r0, r0, #0x20
+        mcreq p15, 0, r0, c1, c0, 0    @ ARM A53 cp15 barrier enable
 		bl	cache_on
 
 restart:	adr	r0, LC0
@@ -276,7 +279,9 @@ restart:	adr	r0, LC0
 		 * of RAM and hope for the best.
 		 */
 		cmp	r0, #1
-		sub	r0, r4, #TEXT_OFFSET
+@		sub	r0, r4, #TEXT_OFFSET
+		ldr 	r0, =TEXT_OFFSET
+		sub	r0, r4, r0
 		add	r0, r0, #0x100
 		mov	r1, r6
 		sub	r2, sp, r6
@@ -679,9 +684,7 @@ __armv4_mmu_cache_on:
 		mrc	p15, 0, r0, c1, c0, 0	@ read control reg
 		orr	r0, r0, #0x5000		@ I-cache enable, RR cache replacement
 		orr	r0, r0, #0x0030
-#ifdef CONFIG_CPU_ENDIAN_BE8
-		orr	r0, r0, #1 << 25	@ big-endian page tables
-#endif
+ ARM_BE8(	orr	r0, r0, #1 << 25 )	@ big-endian page tables
 		bl	__common_mmu_cache_on
 		mov	r0, #0
 		mcr	p15, 0, r0, c8, c7, 0	@ flush I,D TLBs
@@ -708,15 +711,15 @@ __armv7_mmu_cache_on:
 		orr	r0, r0, #1 << 22	@ U (v6 unaligned access model)
 						@ (needed for ARM1176)
 #ifdef CONFIG_MMU
-#ifdef CONFIG_CPU_ENDIAN_BE8
-		orr	r0, r0, #1 << 25	@ big-endian page tables
-#endif
+ ARM_BE8(	orr	r0, r0, #1 << 25 )	@ big-endian page tables
 		mrcne   p15, 0, r6, c2, c0, 2   @ read ttb control reg
 		orrne	r0, r0, #1		@ MMU enabled
 		movne	r1, #0xfffffffd		@ domain 0 = client
 		bic     r6, r6, #1 << 31        @ 32-bit translation system
 		bic     r6, r6, #3 << 0         @ use only ttbr0
 		mcrne	p15, 0, r3, c2, c0, 0	@ load page table pointer
+		mcrne	p15, 0, r0, c8, c7, 0	@ flush I,D TLBs
+		mcr	p15, 0, r0, c7, c5, 4	@ ISB
 		mcrne	p15, 0, r1, c3, c0, 0	@ load domain access control
 		mcrne   p15, 0, r6, c2, c0, 2   @ load ttb control
 #endif

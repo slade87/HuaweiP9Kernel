@@ -1415,7 +1415,7 @@ out:
 	kfree(sshdr);
 	retval = sdp->changed ? DISK_EVENT_MEDIA_CHANGE : 0;
 	sdp->changed = 0;
-	return retval;
+	return (unsigned int)retval;
 }
 
 static int sd_sync_cache(struct scsi_disk *sdkp)
@@ -1732,6 +1732,7 @@ sd_spinup_disk(struct scsi_disk *sdkp)
 	unsigned int the_result;
 	struct scsi_sense_hdr sshdr;
 	int sense_valid = 0;
+	int wait_ready_time = 10;
 
 	spintime = 0;
 
@@ -1754,6 +1755,12 @@ sd_spinup_disk(struct scsi_disk *sdkp)
 			 * doesn't have any media in it, don't bother
 			 * with any more polling.
 			 */
+			if (NOT_READY == sshdr.sense_key && wait_ready_time > 0) {
+				msleep(1000);
+				wait_ready_time--;
+				continue;
+			}
+
 			if (media_not_present(sdkp, &sshdr))
 				return;
 
@@ -2674,9 +2681,14 @@ static int sd_try_extended_inquiry(struct scsi_device *sdp)
 static int sd_revalidate_disk(struct gendisk *disk)
 {
 	struct scsi_disk *sdkp = scsi_disk(disk);
-	struct scsi_device *sdp = sdkp->device;
+	struct scsi_device *sdp;
 	unsigned char *buffer;
 	unsigned flush = 0;
+
+	if (!sdkp)
+		return -ENODEV;
+
+	sdp = sdkp->device;
 
 	SCSI_LOG_HLQUEUE(3, sd_printk(KERN_INFO, sdkp,
 				      "sd_revalidate_disk\n"));

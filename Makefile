@@ -241,7 +241,7 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = gcc
 HOSTCXX      = g++
-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu89
+HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer
 HOSTCXXFLAGS = -O2
 
 # Decide whether to build built-in, modular, or both.
@@ -324,11 +324,11 @@ include $(srctree)/scripts/Kbuild.include
 
 # Make variables (CC, etc...)
 
-AS		= $(CROSS_COMPILE)as
-LD		= $(CROSS_COMPILE)ld
-CC		= $(CROSS_COMPILE)gcc
+AS		= $(SOURCEANALYZER) $(CROSS_COMPILE)as
+LD		= $(SOURCEANALYZER) $(CROSS_COMPILE)ld
+CC		= $(SOURCEANALYZER) $(CCACHE) $(CROSS_COMPILE)gcc
 CPP		= $(CC) -E
-AR		= $(CROSS_COMPILE)ar
+AR		= $(SOURCEANALYZER) $(CROSS_COMPILE)ar
 NM		= $(CROSS_COMPILE)nm
 STRIP		= $(CROSS_COMPILE)strip
 OBJCOPY		= $(CROSS_COMPILE)objcopy
@@ -366,15 +366,19 @@ LINUXINCLUDE    := \
 		$(if $(KBUILD_SRC), -I$(srctree)/include) \
 		-Iinclude \
 		$(USERINCLUDE)
+ifneq ($(BALONG_INC),)
+LINUXINCLUDE	+= $(BALONG_INC)
+endif
+
+LINUXINCLUDE += -I$(srctree)/../vendor/hisi/modem/include/taf/
 
 KBUILD_CPPFLAGS := -D__KERNEL__
 
 KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
-		   -Werror-implicit-function-declaration \
+		   -Wimplicit-function-declaration \
 		   -Wno-format-security \
-		   -fno-delete-null-pointer-checks \
-		   -std=gnu89
+		   -fno-delete-null-pointer-checks 
 
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
@@ -387,11 +391,64 @@ KBUILD_LDFLAGS_MODULE := -T $(srctree)/scripts/module-common.lds
 KERNELRELEASE = $(shell cat include/config/kernel.release 2> /dev/null)
 KERNELVERSION = $(VERSION)$(if $(PATCHLEVEL),.$(PATCHLEVEL)$(if $(SUBLEVEL),.$(SUBLEVEL)))$(EXTRAVERSION)
 
+#add CDMA FEATURE to ap
+KBUILD_CFLAGS += -DFEATURE_ON=1 -DFEATURE_OFF=0
+
+#add SLT FEATURE to ap
+ifeq ($(strip $(hitest_type)),slt)
+KBUILD_CFLAGS += -D__SLT_FEATURE__
+endif
+
+OBB_PRODUCT_NAME = hi3650
+BALONG_TOPDIR = $(srctree)/drivers/vendor/hisi
+CFG_PLATFORM = hi3650
+TARGET_ARM_TYPE = arm64
+export BALONG_TOPDIR OBB_PRODUCT_NAME CFG_PLATFORM TARGET_ARM_TYPE
+LINUXINCLUDE += -I$(BALONG_TOPDIR)/modem/include/taf \
+		-I$(BALONG_TOPDIR)/modem/include \
+		-I$(srctree)/drivers/huawei_platform \
+		-I$(BALONG_TOPDIR)/ap/platform/hi3650 \
+		-I$(BALONG_TOPDIR)/audiodsp/include/ap/med
+# add hisilicon balong configs
+ifneq ($(BALONG_TOPDIR),)
+-include $(BALONG_TOPDIR)/ap/config/product/$(OBB_PRODUCT_NAME)/config/balong_product_config.mk
+endif
+
+ifeq ($(strip $(KERNEL_ARM_TYPE)),)
+KERNEL_ARM_TYPE := arm64
+endif
+export KERNEL_ARM_TYPE
+
+
+# build drv only config
+OBB_SEPARATE        ?=$(separate)
+ifeq ($(strip $(OBB_SEPARATE)),true)
+KBUILD_CFLAGS += -DDRV_BUILD_SEPARATE
+KBUILD_AFLAGS += -DDRV_BUILD_SEPARATE
+KBUILD_CPPFLAGS += -DDRV_BUILD_SEPARATE
+endif
+
 export VERSION PATCHLEVEL SUBLEVEL KERNELRELEASE KERNELVERSION
 export ARCH SRCARCH CONFIG_SHELL HOSTCC HOSTCFLAGS CROSS_COMPILE AS LD CC
 export CPP AR NM STRIP OBJCOPY OBJDUMP
 export MAKE AWK GENKSYMS INSTALLKERNEL PERL UTS_MACHINE
 export HOSTCXX HOSTCXXFLAGS LDFLAGS_MODULE CHECK CHECKFLAGS
+
+KBUILD_CFLAGS   += -DBSP_CORE_APP
+CFLAGS_KERNEL	+= -DBSP_CORE_APP
+AFLAGS_KERNEL   += -DBSP_CORE_APP
+CFLAGS_MODULE   += -DBSP_CORE_APP
+AFLAGS_MODULE   += -DBSP_CORE_APP
+
+ifdef OBB_SEPARATE
+ifneq ($(OBB_SEPARATE),SEPARATE)
+KBUILD_CFLAGS   += -DBSP_COMPILE_ALLY
+CFLAGS_KERNEL	+= -DBSP_COMPILE_ALLY
+AFLAGS_KERNEL   += -DBSP_COMPILE_ALLY
+CFLAGS_MODULE   += -DBSP_COMPILE_ALLY
+AFLAGS_MODULE   += -DBSP_COMPILE_ALLY
+endif
+endif
 
 export KBUILD_CPPFLAGS NOSTDINC_FLAGS LINUXINCLUDE OBJCOPYFLAGS LDFLAGS
 export KBUILD_CFLAGS CFLAGS_KERNEL CFLAGS_MODULE CFLAGS_GCOV
@@ -575,7 +632,7 @@ all: vmlinux
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS	+= -Os $(call cc-disable-warning,maybe-uninitialized,)
 else
-KBUILD_CFLAGS	+= -O2
+KBUILD_CFLAGS	+= -O2 -g
 endif
 
 include $(srctree)/arch/$(SRCARCH)/Makefile
@@ -671,6 +728,11 @@ ifeq ($(shell $(CONFIG_SHELL) $(srctree)/scripts/gcc-goto.sh $(CC)), y)
 	KBUILD_CFLAGS += -DCC_HAVE_ASM_GOTO
 endif
 
+#release version complie
+ifeq (true,$(OBB_PRODUCT_FINAL_RELEASE))
+    KBUILD_CFLAGS += -DFINAL_RELEASE_MODE
+endif
+
 # Add user supplied CPPFLAGS, AFLAGS and CFLAGS as the last assignments
 KBUILD_CPPFLAGS += $(KCPPFLAGS)
 KBUILD_AFLAGS += $(KAFLAGS)
@@ -681,6 +743,9 @@ LDFLAGS_BUILD_ID = $(patsubst -Wl$(comma)%,%,\
 			      $(call cc-ldoption, -Wl$(comma)--build-id,))
 KBUILD_LDFLAGS_MODULE += $(LDFLAGS_BUILD_ID)
 LDFLAGS_vmlinux += $(LDFLAGS_BUILD_ID)
+ifeq ($(ARCH),arm64)
+LDFLAGS_vmlinux += --fix-cortex-a53-843419
+endif
 
 ifeq ($(CONFIG_STRIP_ASM_SYMS),y)
 LDFLAGS_vmlinux	+= $(call ld-option, -X,)
@@ -756,9 +821,24 @@ libs-y1		:= $(patsubst %/, %/lib.a, $(libs-y))
 libs-y2		:= $(patsubst %/, %/built-in.o, $(libs-y))
 libs-y		:= $(libs-y1) $(libs-y2)
 
+ifeq ($(TARGET_ARM_TYPE),arm64)
+device-depend   := $(srctree)/drivers/device-depend-arm64/*.o
+else
+device-depend   := $(srctree)/drivers/device-depend/*.o
+endif
+
+vmlinux-init := $(head-y) $(init-y)
+vmlinux-main := $(core-y) $(libs-y) $(drivers-y) $(net-y)
+vmlinux-all  := $(vmlinux-init) $(vmlinux-main)
+
 # Externally visible symbols (used by link-vmlinux.sh)
 export KBUILD_VMLINUX_INIT := $(head-y) $(init-y)
+ifeq ($(strip $(HISI_PILOT_LIBS)), true)
+export KBUILD_VMLINUX_MAIN := $(core-y) $(libs-y) $(drivers-y) $(device-depend) $(net-y)
+KBUILD_CFLAGS += -DHISI_PILOT_LIBS
+else
 export KBUILD_VMLINUX_MAIN := $(core-y) $(libs-y) $(drivers-y) $(net-y)
+endif
 export KBUILD_LDS          := arch/$(SRCARCH)/kernel/vmlinux.lds
 export LDFLAGS_vmlinux
 # used by scripts/pacmage/Makefile
@@ -782,7 +862,11 @@ endif
 ifdef CONFIG_BUILD_DOCSRC
 	$(Q)$(MAKE) $(build)=Documentation
 endif
+ifeq ($(OBB_PRINT_CMD), true)
+	$(call if_changed,link-vmlinux)
+else
 	+$(call if_changed,link-vmlinux)
+endif
 
 # The actual objects are generated when descending, 
 # make sure no implicit rule kicks in
@@ -799,9 +883,14 @@ $(vmlinux-dirs): prepare scripts
 	$(Q)$(MAKE) $(build)=$@
 
 # Store (new) KERNELRELASE string in include/config/kernel.release
+ifeq ($(OBB_PRINT_CMD), true)
+include/config/kernel.release: include/config/auto.conf
+	+$(Q)echo "$(KERNELVERSION)$$($(CONFIG_SHELL) $(srctree)/scripts/setlocalversion $(srctree))" > $@
+else
 include/config/kernel.release: include/config/auto.conf FORCE
 	$(Q)rm -f $@
 	$(Q)echo "$(KERNELVERSION)$$($(CONFIG_SHELL) $(srctree)/scripts/setlocalversion $(srctree))" > $@
+endif
 
 
 # Things we need to do before we recursively start building the kernel
@@ -1435,3 +1524,11 @@ FORCE:
 # Declare the contents of the .PHONY variable as phony.  We keep that
 # information in a variable so we can use it in if_changed and friends.
 .PHONY: $(PHONY)
+
+do_pc_lint_all : build = -f $(if $(KBUILD_SRC),$(srctree)/)scripts/Makefile.build new_pc_lint obj
+do_pc_lint_all : $(vmlinux-all) FORCE
+	@:
+
+pc_lint_all : do_pc_lint_all
+
+export SRCHI1101=drivers/misc/hw-drv

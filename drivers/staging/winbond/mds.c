@@ -147,10 +147,8 @@ static void Mds_DurationSet(struct wbsoft_priv *adapter,  struct wb35_descriptor
 
 			((u16 *)buffer)[5] = cpu_to_le16(Duration); /* 4 USHOR for skip 8B USB, 2USHORT=FC + Duration */
 
-			/* ----20061009 add by anson's endian */
 			pNextT00->value = cpu_to_le32(pNextT00->value);
 			pT01->value = cpu_to_le32(pT01->value);
-			/* ----end 20061009 add by anson's endian */
 
 			buffer += OffsetSize;
 			pT01 = (struct T01_descriptor *)(buffer+4);
@@ -186,7 +184,6 @@ static void Mds_DurationSet(struct wbsoft_priv *adapter,  struct wb35_descriptor
 	((u16 *)buffer)[5] = cpu_to_le16(Duration); /* 4 USHOR for skip 8B USB, 2USHORT=FC + Duration */
 	pT00->value = cpu_to_le32(pT00->value);
 	pT01->value = cpu_to_le32(pT01->value);
-	/* --end 20061009 add */
 
 }
 

@@ -1794,7 +1794,10 @@ static int do_one_broadcast(struct sock *sk,
 		/* Clone failed. Notify ALL listeners. */
 		p->failure = 1;
 		if (nlk->flags & NETLINK_BROADCAST_SEND_ERROR)
+		{
 			p->delivery_failure = 1;
+			printk("error:  p->skb2 is NULL\n");
+		}
 	} else if (p->tx_filter && p->tx_filter(sk, p->skb2, p->tx_data)) {
 		kfree_skb(p->skb2);
 		p->skb2 = NULL;
@@ -1804,7 +1807,10 @@ static int do_one_broadcast(struct sock *sk,
 	} else if ((val = netlink_broadcast_deliver(sk, p->skb2)) < 0) {
 		netlink_overrun(sk);
 		if (nlk->flags & NETLINK_BROADCAST_SEND_ERROR)
+		{
 			p->delivery_failure = 1;
+			printk("error:  return val = %d\n", val);
+		}
 	} else {
 		p->congested |= val;
 		p->delivered = 1;

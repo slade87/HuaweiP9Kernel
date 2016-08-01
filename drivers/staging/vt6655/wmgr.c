@@ -1,65 +1,4 @@
-/*
- * Copyright (c) 1996, 2003 VIA Networking Technologies, Inc.
- * All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- *
- * File: wmgr.c
- *
- * Purpose: Handles the 802.11 management functions
- *
- * Author: Lyndon Chen
- *
- * Date: May 8, 2002
- *
- * Functions:
- *      nsMgrObjectInitial - Initialize Management Object data structure
- *      vMgrObjectReset - Reset Management Object data structure
- *      vMgrAssocBeginSta - Start associate function
- *      vMgrReAssocBeginSta - Start reassociate function
- *      vMgrDisassocBeginSta - Start disassociate function
- *      s_vMgrRxAssocRequest - Handle Rcv associate_request
- *      s_vMgrRxAssocResponse - Handle Rcv associate_response
- *      vMrgAuthenBeginSta - Start authentication function
- *      vMgrDeAuthenDeginSta - Start deauthentication function
- *      s_vMgrRxAuthentication - Handle Rcv authentication
- *      s_vMgrRxAuthenSequence_1 - Handle Rcv authentication sequence 1
- *      s_vMgrRxAuthenSequence_2 - Handle Rcv authentication sequence 2
- *      s_vMgrRxAuthenSequence_3 - Handle Rcv authentication sequence 3
- *      s_vMgrRxAuthenSequence_4 - Handle Rcv authentication sequence 4
- *      s_vMgrRxDisassociation - Handle Rcv disassociation
- *      s_vMgrRxBeacon - Handle Rcv Beacon
- *      vMgrCreateOwnIBSS - Create ad_hoc IBSS or AP BSS
- *      vMgrJoinBSSBegin - Join BSS function
- *      s_vMgrSynchBSS - Synch & adopt BSS parameters
- *      s_MgrMakeBeacon - Create Baecon frame
- *      s_MgrMakeProbeResponse - Create Probe Response frame
- *      s_MgrMakeAssocRequest - Create Associate Request frame
- *      s_MgrMakeReAssocRequest - Create ReAssociate Request frame
- *      s_vMgrRxProbeResponse - Handle Rcv probe_response
- *      s_vMrgRxProbeRequest - Handle Rcv probe_request
- *      bMgrPrepareBeaconToSend - Prepare Beacon frame
- *      s_vMgrLogStatus - Log 802.11 Status
- *      vMgrRxManagePacket - Rcv management frame dispatch function
- *      s_vMgrFormatTIM- Assembler TIM field of beacon
- *      vMgrTimerInit- Initial 1-sec and command call back funtions
- *
- * Revision History:
- *
- */
+
 
 #include "tmacro.h"
 #include "desc.h"
@@ -91,7 +30,6 @@ static int msglevel = MSG_LEVEL_INFO;
 //static int          msglevel                =MSG_LEVEL_DEBUG;
 
 /*---------------------  Static Functions  --------------------------*/
-//2008-8-4 <add> by chester
 static bool ChannelExceedZoneType(
 	PSDevice pDevice,
 	unsigned char byCurrChannel
@@ -1025,7 +963,6 @@ s_vMgrRxAssocResponse(
 				pDevice->skb = dev_alloc_skb((int)pDevice->rx_buf_sz);
 			}
 
-//2008-0409-07, <Add> by Einsn Liu
 #ifdef WPA_SUPPLICANT_DRIVER_WEXT_SUPPORT
 			{
 				unsigned char buf[512];
@@ -1061,7 +998,6 @@ s_vMgrRxAssocResponse(
 				wireless_send_event(pDevice->dev, SIOCGIWAP, &wrqu, NULL);
 			}
 #endif //#ifdef WPA_SUPPLICANT_DRIVER_WEXT_SUPPORT
-//End Add -- //2008-0409-07, <Add> by Einsn Liu
 		} else {
 			if (bReAssocType) {
 				pMgmt->eCurrState = WMAC_STATE_IDLE;
@@ -1722,7 +1658,6 @@ s_vMgrRxDeauthentication(
 	return;
 }
 
-//2008-8-4 <add> by chester
 /*+
  *
  * Routine Description:
@@ -1835,7 +1770,6 @@ s_vMgrRxBeacon(
 		// no DS channel info
 		bChannelHit = true;
 	}
-//2008-0730-01<Add>by MikeLiu
 	if (ChannelExceedZoneType(pDevice, byCurrChannel) == true)
 		return;
 
@@ -1937,7 +1871,6 @@ s_vMgrRxBeacon(
 		   WLAN_BSSID_LEN) == 0) {
 		bIsBSSIDEqual = true;
 
-// 2008-05-21 <add> by Richardtai
 		pDevice->uCurrRSSI = pRxPacket->uRSSI;
 		pDevice->byCurrSQ = pRxPacket->bySQ;
 
@@ -4139,7 +4072,6 @@ s_vMgrRxProbeResponse(
 		bChannelHit = true;
 	}
 
-//2008-0730-01<Add>by MikeLiu
 	if (ChannelExceedZoneType(pDevice, byCurrChannel) == true)
 		return;
 
@@ -4650,7 +4582,6 @@ s_bCipherMatch(
 
 	if ((WLAN_GET_CAP_INFO_PRIVACY(pBSSNode->wCapInfo) != 0) &&
 	    (pBSSNode->bWPA2Valid == true) &&
-	    //20080123-01,<Add> by Einsn Liu
 	    ((EncStatus == Ndis802_11Encryption3Enabled) || (EncStatus == Ndis802_11Encryption2Enabled))) {
 		//WPA2
 		// check Group Key Cipher

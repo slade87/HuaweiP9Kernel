@@ -276,7 +276,6 @@ struct intel_mid_i2c_private {
 #define IC_COMP_PARAM_1		0xf4
 #define APB_DATA_WIDTH		(0x3 << 0)
 
-/* added by xiaolin --begin */
 #define SS_MIN_SCL_HIGH         4000
 #define SS_MIN_SCL_LOW          4700
 #define FS_MIN_SCL_HIGH         600

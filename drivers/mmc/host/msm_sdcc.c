@@ -1352,7 +1352,7 @@ msmsdcc_probe(struct platform_device *pdev)
 	if (ret)
 		goto cmd_irq_free;
 
-	mmc_set_drvdata(pdev, mmc);
+	platform_set_drvdata(pdev, mmc);
 	mmc_add_host(mmc);
 
 	pr_info("%s: Qualcomm MSM SDCC at 0x%016llx irq %d,%d dma %d\n",
@@ -1424,7 +1424,7 @@ do_resume_work(struct work_struct *work)
 static int
 msmsdcc_suspend(struct platform_device *dev, pm_message_t state)
 {
-	struct mmc_host *mmc = mmc_get_drvdata(dev);
+	struct mmc_host *mmc = platform_get_drvdata(dev);
 	int rc = 0;
 
 	if (mmc) {
@@ -1446,7 +1446,7 @@ msmsdcc_suspend(struct platform_device *dev, pm_message_t state)
 static int
 msmsdcc_resume(struct platform_device *dev)
 {
-	struct mmc_host *mmc = mmc_get_drvdata(dev);
+	struct mmc_host *mmc = platform_get_drvdata(dev);
 
 	if (mmc) {
 		struct msmsdcc_host *host = mmc_priv(mmc);

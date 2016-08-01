@@ -227,7 +227,7 @@ static void Wb35Tx_EP2VM_complete(struct urb *pUrb)
 	InterruptInLength = pUrb->actual_length;
 	/* Modify for minimum memory access and DWORD alignment. */
 	T02.value = cpu_to_le32(pltmp[0]) >> 8; /* [31:8] -> [24:0] */
-	InterruptInLength -= 1; /* 20051221.1.c Modify the follow for more stable */
+	InterruptInLength -= 1;
 	InterruptInLength >>= 2; /* InterruptInLength/4 */
 	for (i = 1; i <= InterruptInLength; i++) {
 		T02.value |= ((cpu_to_le32(pltmp[i]) & 0xff) << 24);

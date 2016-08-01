@@ -489,7 +489,6 @@ int ieee80211_rtl_xmit(struct sk_buff *skb,
 				bytes = bytes_last_frag;
 			}
 			if(ieee->current_network.QoS_Enable) {
-			  // add 1 only indicate to corresponding seq number control 2006/7/12
 			  frag_hdr->seq_ctl = cpu_to_le16(ieee->seq_ctrl[UP2AC(skb->priority)+1]<<4 | i);
 			  //printk(KERN_WARNING "skb->priority = %d,", skb->priority);
 			  //printk(KERN_WARNING "type:%d: seq = %d\n",UP2AC(skb->priority),ieee->seq_ctrl[UP2AC(skb->priority)+1]);

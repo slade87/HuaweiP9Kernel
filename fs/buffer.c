@@ -4,19 +4,7 @@
  *  Copyright (C) 1991, 1992, 2002  Linus Torvalds
  */
 
-/*
- * Start bdflush() with kernel_thread not syscall - Paul Gortmaker, 12/95
- *
- * Removed a lot of unnecessary code and simplified things now that
- * the buffer cache isn't our primary cache - Andrew Tridgell 12/96
- *
- * Speed up hash, lru, and free list operations.  Use gfp() for allocating
- * hash table, use SLAB cache for buffer heads. SMP threading.  -DaveM
- *
- * Added 32k buffer block sizes - these are required older ARM systems. - RMK
- *
- * async buffer flushing, 1999 Andrea Arcangeli <andrea@suse.de>
- */
+
 
 #include <linux/kernel.h>
 #include <linux/syscalls.h>
@@ -42,6 +30,10 @@
 #include <linux/mpage.h>
 #include <linux/bit_spinlock.h>
 #include <trace/events/block.h>
+
+#include <trace/iotrace.h>
+DEFINE_TRACE(block_write_begin_enter);
+DEFINE_TRACE(block_write_begin_end);
 
 static int fsync_buffers_list(spinlock_t *lock, struct list_head *list);
 
@@ -112,10 +104,12 @@ static int quiet_error(struct buffer_head *bh)
 
 static void buffer_io_error(struct buffer_head *bh)
 {
+#if 0
 	char b[BDEVNAME_SIZE];
 	printk(KERN_ERR "Buffer I/O error on device %s, logical block %Lu\n",
 			bdevname(bh->b_bdev, b),
 			(unsigned long long)bh->b_blocknr);
+#endif
 }
 
 /*
@@ -633,31 +627,7 @@ static void __set_page_dirty(struct page *page,
 	__mark_inode_dirty(mapping->host, I_DIRTY_PAGES);
 }
 
-/*
- * Add a page to the dirty page list.
- *
- * It is a sad fact of life that this function is called from several places
- * deeply under spinlocking.  It may not sleep.
- *
- * If the page has buffers, the uptodate buffers are set dirty, to preserve
- * dirty-state coherency between the page and the buffers.  It the page does
- * not have buffers then when they are later attached they will all be set
- * dirty.
- *
- * The buffers are dirtied before the page is dirtied.  There's a small race
- * window in which a writepage caller may see the page cleanness but not the
- * buffer dirtiness.  That's fine.  If this code were to set the page dirty
- * before the buffers, a concurrent writepage caller could clear the page dirty
- * bit, see a bunch of clean buffers and we'd end up with dirty buffers/clean
- * page on the dirty page list.
- *
- * We use private_lock to lock against try_to_free_buffers while using the
- * page's buffer list.  Also use this to protect against clean buffers being
- * added to the page after it was set dirty.
- *
- * FIXME: may need to call ->reservepage here as well.  That's rather up to the
- * address_space though.
- */
+
 int __set_page_dirty_buffers(struct page *page)
 {
 	int newly_dirty;
@@ -1845,6 +1815,8 @@ int __block_write_begin(struct page *page, loff_t pos, unsigned len,
 	BUG_ON(to > PAGE_CACHE_SIZE);
 	BUG_ON(from > to);
 
+    trace_block_write_begin_enter(inode, page, pos, len);
+
 	head = create_page_buffers(page, inode, 0);
 	blocksize = head->b_size;
 	bbits = block_size_bits(blocksize);
@@ -1906,6 +1878,9 @@ int __block_write_begin(struct page *page, loff_t pos, unsigned len,
 	}
 	if (unlikely(err))
 		page_zero_new_buffers(page, from, to);
+
+    trace_block_write_begin_end(inode, page, err);
+
 	return err;
 }
 EXPORT_SYMBOL(__block_write_begin);

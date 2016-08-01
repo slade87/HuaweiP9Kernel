@@ -31,7 +31,7 @@
 #include <linux/io.h>
 #include <linux/irqreturn.h>
 #include <uapi/linux/pci.h>
-
+#include <linux/resource_ext.h>
 /* Include the ID list */
 #include <linux/pci_ids.h>
 
@@ -225,6 +225,8 @@ struct pcie_link_state;
 struct pci_vpd;
 struct pci_sriov;
 struct pci_ats;
+
+
 
 /*
  * The pci_dev structure is used to describe PCI devices.
@@ -433,6 +435,7 @@ struct pci_bus {
 	struct resource busn_res;	/* bus numbers routed to this bus */
 
 	struct pci_ops	*ops;		/* configuration access functions */
+	struct msi_controller *msi;	/* MSI controller */
 	void		*sysdata;	/* hook for sys-specific extension */
 	struct proc_dir_entry *procdir;	/* directory entry in /proc/bus/pci */
 
@@ -440,6 +443,9 @@ struct pci_bus {
 	unsigned char	primary;	/* number of primary bridge */
 	unsigned char	max_bus_speed;	/* enum pci_bus_speed */
 	unsigned char	cur_bus_speed;	/* enum pci_bus_speed */
+#ifdef CONFIG_PCI_DOMAINS_GENERIC
+	int		domain_nr;
+#endif
 
 	char		name[48];
 
@@ -1041,6 +1047,9 @@ int __must_check pci_bus_alloc_resource(struct pci_bus *bus,
 						  resource_size_t,
 						  resource_size_t),
 			void *alignf_data);
+
+
+int pci_remap_iospace(const struct resource *res, phys_addr_t phys_addr);
 void pci_enable_bridges(struct pci_bus *bus);
 
 /* Proper probing supporting hot-pluggable devices */
@@ -1230,16 +1239,25 @@ void pci_cfg_access_unlock(struct pci_dev *dev);
 extern int pci_domains_supported;
 #else
 enum { pci_domains_supported = 0 };
+#endif /* CONFIG_PCI_DOMAINS */
+
+/*
+ * Generic implementation for PCI domain support. If your
+ * architecture does not need custom management of PCI
+ * domains then this implementation will be used
+ */
+#ifdef CONFIG_PCI_DOMAINS_GENERIC
 static inline int pci_domain_nr(struct pci_bus *bus)
 {
-	return 0;
+	return bus->domain_nr;
 }
-
-static inline int pci_proc_domain(struct pci_bus *bus)
+void pci_bus_assign_domain_nr(struct pci_bus *bus, struct device *parent);
+#else
+static inline void pci_bus_assign_domain_nr(struct pci_bus *bus,
+					struct device *parent)
 {
-	return 0;
 }
-#endif /* CONFIG_PCI_DOMAINS */
+#endif
 
 /* some architectures require additional setup to direct VGA traffic */
 typedef int (*arch_set_vga_state_t)(struct pci_dev *pdev, bool decode,

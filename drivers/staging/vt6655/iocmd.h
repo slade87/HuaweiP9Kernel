@@ -167,7 +167,6 @@ typedef struct tagSBSSIDItem {
 	u32	    uChannel;
 	u8      abyBSSID[BSSID_LEN];
 	u8      abySSID[SSID_MAXLEN + 1];
-	//2006-1116-01,<Modify> by NomadZhao
 	//u16	    wBeaconInterval;
 	//u16	    wCapInfo;
 	//u8      byNetType;
@@ -415,7 +414,6 @@ struct viawget_hostapd_param {
 	} u;
 };
 
-//2006-1116-01,<Add> by NomadZhao
 #pragma pack()
 
 /*---------------------  Export Classes  ----------------------------*/

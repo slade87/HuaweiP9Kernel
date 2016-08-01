@@ -28,9 +28,21 @@
 #include <linux/sched.h>
 #include <linux/async.h>
 #include <linux/suspend.h>
+#include <trace/events/power.h>
+#include <linux/cpufreq.h>
 #include <linux/cpuidle.h>
+#include <linux/timer.h>
+#include <linux/wakeup_reason.h>
+#include <huawei_platform/log/log_jank.h>
+
 #include "../base.h"
 #include "power.h"
+
+/*===tele_mntn===*/
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+#include <linux/hisi/hisi_tele_mntn.h>
+#endif
+/*===tele_mntn===*/
 
 typedef int (*pm_callback_t)(struct device *);
 
@@ -54,7 +66,23 @@ struct suspend_stats suspend_stats;
 static DEFINE_MUTEX(dpm_list_mtx);
 static pm_message_t pm_transition;
 
+struct dpm_watchdog {
+	struct device		*dev;
+	struct task_struct	*tsk;
+	struct timer_list	timer;
+};
+
 static int async_error;
+
+/*===tele_mntn===*/
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+struct tele_mntn_sr
+{
+    unsigned long addr;
+    int ret;
+};
+#endif
+/*===tele_mntn===*/
 
 /**
  * device_pm_sleep_init - Initialize system suspend-related device fields.
@@ -362,6 +390,8 @@ static void dpm_show_time(ktime_t starttime, pm_message_t state, char *info)
 	pr_info("PM: %s%s%s of devices complete after %ld.%03ld msecs\n",
 		info ?: "", info ? " " : "", pm_verb(state.event),
 		usecs / USEC_PER_MSEC, usecs % USEC_PER_MSEC);
+    if (PM_EVENT_RESUME == state.event)
+        LOG_JANK_D(JLID_KERNEL_PM_DEEPSLEEP_WAKEUP, "%s: %ld.%03ld msecs", "JL_KERNEL_PM_DEEPSLEEP_WAKEUP", usecs / USEC_PER_MSEC, usecs % USEC_PER_MSEC);
 }
 
 static int dpm_run_callback(pm_callback_t cb, struct device *dev,
@@ -382,6 +412,56 @@ static int dpm_run_callback(pm_callback_t cb, struct device *dev,
 	initcall_debug_report(dev, calltime, error);
 
 	return error;
+}
+
+/**
+ * dpm_wd_handler - Driver suspend / resume watchdog handler.
+ *
+ * Called when a driver has timed out suspending or resuming.
+ * There's not much we can do here to recover so BUG() out for
+ * a crash-dump
+ */
+static void dpm_wd_handler(unsigned long data)
+{
+	struct dpm_watchdog *wd = (void *)data;
+	struct device *dev      = wd->dev;
+	struct task_struct *tsk = wd->tsk;
+
+	dev_emerg(dev, "**** DPM device timeout ****\n");
+	show_stack(tsk, NULL);
+
+	BUG();
+}
+
+/**
+ * dpm_wd_set - Enable pm watchdog for given device.
+ * @wd: Watchdog. Must be allocated on the stack.
+ * @dev: Device to handle.
+ */
+static void dpm_wd_set(struct dpm_watchdog *wd, struct device *dev)
+{
+	struct timer_list *timer = &wd->timer;
+
+	wd->dev = dev;
+	wd->tsk = get_current();
+
+	init_timer_on_stack(timer);
+	timer->expires = jiffies + HZ * 12;
+	timer->function = dpm_wd_handler;
+	timer->data = (unsigned long)wd;
+	add_timer(timer);
+}
+
+/**
+ * dpm_wd_clear - Disable pm watchdog.
+ * @wd: Watchdog to disable.
+ */
+static void dpm_wd_clear(struct dpm_watchdog *wd)
+{
+	struct timer_list *timer = &wd->timer;
+
+	del_timer_sync(timer);
+	destroy_timer_on_stack(timer);
 }
 
 /*------------------------- Resume routines -------------------------*/
@@ -570,7 +650,12 @@ static int device_resume(struct device *dev, pm_message_t state, bool async)
 	pm_callback_t callback = NULL;
 	char *info = NULL;
 	int error = 0;
-
+	struct dpm_watchdog wd;
+/*===tele_mntn===*/
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+    struct tele_mntn_sr val = {0, 0};
+#endif
+/*===tele_mntn===*/
 	TRACE_DEVICE(dev);
 	TRACE_RESUME(0);
 
@@ -585,6 +670,7 @@ static int device_resume(struct device *dev, pm_message_t state, bool async)
 	 * a resumed device, even if the device hasn't been completed yet.
 	 */
 	dev->power.is_prepared = false;
+	dpm_wd_set(&wd, dev);
 
 	if (!dev->power.is_suspended)
 		goto Unlock;
@@ -634,8 +720,19 @@ static int device_resume(struct device *dev, pm_message_t state, bool async)
 	error = dpm_run_callback(callback, dev, state, info);
 	dev->power.is_suspended = false;
 
+/*===tele_mntn===*/
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+    if(callback) {
+    	val.addr = (unsigned long)callback;
+    	val.ret = error;
+    	(void)tele_mntn_write_log(TELE_MNTN_SR_ACPU, sizeof(val), (void *)&val);
+	}
+#endif
+/*===tele_mntn===*/
+
  Unlock:
 	device_unlock(dev);
+	dpm_wd_clear(&wd);
 
  Complete:
 	complete_all(&dev->power.completion);
@@ -673,12 +770,22 @@ void dpm_resume(pm_message_t state)
 {
 	struct device *dev;
 	ktime_t starttime = ktime_get();
-
+/*===tele_mntn===*/
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+    struct tele_mntn_sr val = {0xAAAA, 0xBBBB};
+#endif
+/*===tele_mntn===*/
 	might_sleep();
 
 	mutex_lock(&dpm_list_mtx);
 	pm_transition = state;
 	async_error = 0;
+
+/*===tele_mntn===*/
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+    (void)tele_mntn_write_log(TELE_MNTN_SR_ACPU, sizeof(val), (void *)&val);
+#endif
+/*===tele_mntn===*/
 
 	list_for_each_entry(dev, &dpm_suspended_list, power.entry) {
 		INIT_COMPLETION(dev->power.completion);
@@ -713,6 +820,8 @@ void dpm_resume(pm_message_t state)
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
 	dpm_show_time(starttime, state, NULL);
+
+	cpufreq_resume();
 }
 
 /**
@@ -877,6 +986,7 @@ static int device_suspend_noirq(struct device *dev, pm_message_t state)
 static int dpm_suspend_noirq(pm_message_t state)
 {
 	ktime_t starttime = ktime_get();
+	char suspend_abort[MAX_SUSPEND_ABORT_LEN];
 	int error = 0;
 
 	cpuidle_pause();
@@ -904,6 +1014,9 @@ static int dpm_suspend_noirq(pm_message_t state)
 		put_device(dev);
 
 		if (pm_wakeup_pending()) {
+			pm_get_active_wakeup_sources(suspend_abort,
+				MAX_SUSPEND_ABORT_LEN);
+			log_suspend_abort_reason(suspend_abort);
 			error = -EBUSY;
 			break;
 		}
@@ -962,6 +1075,7 @@ static int device_suspend_late(struct device *dev, pm_message_t state)
 static int dpm_suspend_late(pm_message_t state)
 {
 	ktime_t starttime = ktime_get();
+	char suspend_abort[MAX_SUSPEND_ABORT_LEN];
 	int error = 0;
 
 	mutex_lock(&dpm_list_mtx);
@@ -987,6 +1101,9 @@ static int dpm_suspend_late(pm_message_t state)
 		put_device(dev);
 
 		if (pm_wakeup_pending()) {
+			pm_get_active_wakeup_sources(suspend_abort,
+				MAX_SUSPEND_ABORT_LEN);
+			log_suspend_abort_reason(suspend_abort);
 			error = -EBUSY;
 			break;
 		}
@@ -1053,6 +1170,14 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	pm_callback_t callback = NULL;
 	char *info = NULL;
 	int error = 0;
+	struct dpm_watchdog wd;
+	char suspend_abort[MAX_SUSPEND_ABORT_LEN];
+
+/*===tele_mntn===*/
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+    struct tele_mntn_sr val = {0, 0};
+#endif
+/*===tele_mntn===*/
 
 	dpm_wait_for_children(dev, async);
 
@@ -1069,12 +1194,17 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 		pm_wakeup_event(dev, 0);
 
 	if (pm_wakeup_pending()) {
+		pm_get_active_wakeup_sources(suspend_abort,
+			MAX_SUSPEND_ABORT_LEN);
+		log_suspend_abort_reason(suspend_abort);
 		async_error = -EBUSY;
 		goto Complete;
 	}
 
 	if (dev->power.syscore)
 		goto Complete;
+
+	dpm_wd_set(&wd, dev);
 
 	device_lock(dev);
 
@@ -1121,6 +1251,16 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 
 	error = dpm_run_callback(callback, dev, state, info);
 
+/*===tele_mntn===*/
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+    if(callback) {
+    	val.addr = (unsigned long)callback;
+    	val.ret = error;
+    	(void)tele_mntn_write_log(TELE_MNTN_SR_ACPU, sizeof(val), (void *)&val);
+	}
+#endif
+/*===tele_mntn===*/
+
  End:
 	if (!error) {
 		dev->power.is_suspended = true;
@@ -1130,6 +1270,8 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	}
 
 	device_unlock(dev);
+
+	dpm_wd_clear(&wd);
 
  Complete:
 	complete_all(&dev->power.completion);
@@ -1174,12 +1316,25 @@ int dpm_suspend(pm_message_t state)
 {
 	ktime_t starttime = ktime_get();
 	int error = 0;
-
+/*===tele_mntn===*/
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+    struct tele_mntn_sr val = {0xFFFF, 0xEEEE};
+#endif
+/*===tele_mntn===*/
 	might_sleep();
+
+	cpufreq_suspend();
 
 	mutex_lock(&dpm_list_mtx);
 	pm_transition = state;
 	async_error = 0;
+
+/*===tele_mntn===*/
+#if defined (CONFIG_HISILICON_PLATFORM_TELE_MNTN)
+    (void)tele_mntn_write_log(TELE_MNTN_SR_ACPU, sizeof(val), (void *)&val);
+#endif
+/*===tele_mntn===*/
+
 	while (!list_empty(&dpm_prepared_list)) {
 		struct device *dev = to_device(dpm_prepared_list.prev);
 

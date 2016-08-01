@@ -1,26 +1,4 @@
-/*
- * Merged with mainline ieee80211.h in Aug 2004.  Original ieee802_11
- * remains copyright by the original authors
- *
- * Portions of the merged code are based on Host AP (software wireless
- * LAN access point) driver for Intersil Prism2/2.5/3.
- *
- * Copyright (c) 2001-2002, SSH Communications Security Corp and Jouni Malinen
- * <jkmaline@cc.hut.fi>
- * Copyright (c) 2002-2003, Jouni Malinen <jkmaline@cc.hut.fi>
- *
- * Adaption to a generic IEEE 802.11 stack by James Ketrenos
- * <jketreno@linux.intel.com>
- * Copyright (c) 2004, Intel Corporation
- *
- * Modified for Realtek's wi-fi cards by Andrea Merello
- * <andreamrl@tiscali.it>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation. See README and COPYING for
- * more details.
- */
+
 #ifndef IEEE80211_H
 #define IEEE80211_H
 #include <linux/if_ether.h> /* ETH_ALEN */
@@ -218,7 +196,6 @@ enum	_ReasonCode{
 	auth_802_1x_fail= 0x17,
 	ciper_reject		= 0x18,
 
-	// Reason code defined in 7.3.1.7, 802.1e D13.0, p.42. Added by Annie, 2005-11-15.
 	QoS_unspec		= 0x20, // 32
 	QAP_bandwidth	= 0x21, // 33
 	poor_condition	= 0x22, // 34
@@ -480,7 +457,7 @@ typedef struct ieee_param {
 #define IEEE80211_STYPE_CFACK		0x0050
 #define IEEE80211_STYPE_CFPOLL		0x0060
 #define IEEE80211_STYPE_CFACKPOLL	0x0070
-#define IEEE80211_STYPE_QOS_DATA	0x0080 //added for WMM 2006/8/2
+#define IEEE80211_STYPE_QOS_DATA	0x0080
 #define IEEE80211_STYPE_QOS_NULL	0x00C0
 
 #define IEEE80211_SCTL_FRAG		0x000F
@@ -619,7 +596,6 @@ do { if (ieee80211_debug_level & (level)) \
 #define IEEE80211_DEBUG_QOS(f, a...)  IEEE80211_DEBUG(IEEE80211_DL_QOS, f, ## a)
 
 #ifdef CONFIG_IEEE80211_DEBUG
-/* Added by Annie, 2005-11-22. */
 #define MAX_STR_LEN     64
 /* I want to see ASCII 33 to 126 only. Otherwise, I print '?'. Annie, 2005-11-22.*/
 #define PRINTABLE(_ch)  (_ch>'!' && _ch<'~')
@@ -894,7 +870,7 @@ struct ieee80211_rx_stats {
 	u32       TimeStampLow;
 	u32       TimeStampHigh;
 	bool      bShift;
-	bool      bIsQosData;             // Added by Annie, 2005-12-22.
+	bool      bIsQosData;
 	u8        UserPriority;
 
 	//1!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1449,7 +1425,6 @@ enum {WMM_all_frame, WMM_two_frame, WMM_four_frame, WMM_six_frame};
 #define IEEE80211_PS_UNICAST IEEE80211_DTIM_UCAST
 #define IEEE80211_PS_MBCAST IEEE80211_DTIM_MBCAST
 
-//added by David for QoS 2006/6/30
 //#define WMM_Hang_8187
 #ifdef WMM_Hang_8187
 #undef WMM_Hang_8187
@@ -1853,7 +1828,6 @@ struct ieee80211_device {
 	RX_REORDER_ENTRY	RxReorderEntry[128];
 	struct list_head		RxReorder_Unused_List;
 //#endif
-	// Qos related. Added by Annie, 2005-11-01.
 //	PSTA_QOS			pStaQos;
 	u8				ForcedPriority;		// Force per-packet priority 1~7. (default: 0, not to force it.)
 
@@ -2010,8 +1984,8 @@ struct ieee80211_device {
 	short wap_set;
 	short ssid_set;
 
-	u8  wpax_type_set;    //{added by David, 2006.9.28}
-	u32 wpax_type_notify; //{added by David, 2006.9.26}
+	u8  wpax_type_set;
+	u32 wpax_type_notify;
 
 	/* QoS related flag */
 	char init_wmmparam_flag;
@@ -2088,7 +2062,6 @@ struct ieee80211_device {
 	 struct delayed_work start_ibss_wq;
 	struct work_struct wx_sync_scan_wq;
 	struct workqueue_struct *wq;
-	// Qos related. Added by Annie, 2005-11-01.
 	//STA_QOS  StaQos;
 
 	//u32 STA_EDCA_PARAM[4];
@@ -2250,7 +2223,7 @@ static inline void *ieee80211_priv(struct net_device *dev)
 	return ((struct ieee80211_device *)netdev_priv(dev))->priv;
 }
 
-static inline int ieee80211_is_empty_essid(const char *essid, int essid_len)
+extern inline int ieee80211_is_empty_essid(const char *essid, int essid_len)
 {
 	/* Single white space is for Linksys APs */
 	if (essid_len == 1 && essid[0] == ' ')
@@ -2266,7 +2239,7 @@ static inline int ieee80211_is_empty_essid(const char *essid, int essid_len)
 	return 1;
 }
 
-static inline int ieee80211_is_valid_mode(struct ieee80211_device *ieee, int mode)
+extern inline int ieee80211_is_valid_mode(struct ieee80211_device *ieee, int mode)
 {
 	/*
 	 * It is possible for both access points and our device to support
@@ -2292,7 +2265,7 @@ static inline int ieee80211_is_valid_mode(struct ieee80211_device *ieee, int mod
 	return 0;
 }
 
-static inline int ieee80211_get_hdrlen(u16 fc)
+extern inline int ieee80211_get_hdrlen(u16 fc)
 {
 	int hdrlen = IEEE80211_3ADDR_LEN;
 
@@ -2578,12 +2551,12 @@ void ieee80211_softmac_scan_syncro(struct ieee80211_device *ieee);
 
 extern const long ieee80211_wlan_frequencies[];
 
-static inline void ieee80211_increment_scans(struct ieee80211_device *ieee)
+extern inline void ieee80211_increment_scans(struct ieee80211_device *ieee)
 {
 	ieee->scans++;
 }
 
-static inline int ieee80211_get_scans(struct ieee80211_device *ieee)
+extern inline int ieee80211_get_scans(struct ieee80211_device *ieee)
 {
 	return ieee->scans;
 }

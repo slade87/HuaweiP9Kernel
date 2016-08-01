@@ -107,9 +107,23 @@ endmenu
 
 endif # BLOCK
 
+config HW_SYSTEM_WR_PROTECT
+	bool "write protection function of system partitions."
+	depends on BLOCK
+	default n
 config BLOCK_COMPAT
 	bool
 	depends on BLOCK && COMPAT
 	default y
 
+config HISI_BLOCK_FREQUENCE_CONTROL
+	bool "add ddr frequence request base on block layer."
+	depends on BLOCK
+	default n
+
+config MMC_BLOCK_IOMMU_64BIT
+	bool "block bounce limit"
+	default n
+	help
+	 Blk-setting will use address >4G for IOMMU.
 source block/Kconfig.iosched

@@ -26,7 +26,6 @@
 /*---------------------------Define Local Constant---------------------------*/
 /* Debug constant*/
 #define		CMPK_DEBOUNCE_CNT			1
-/* 2007/10/24 MH Add for printing a range of data. */
 #define		CMPK_PRINT(Address)\
 {\
 	unsigned char	i;\
@@ -363,26 +362,7 @@ cmdpkt_beacontimerinterrupt_819xusb(
 
 
 
-/*-----------------------------------------------------------------------------
- * Function:    cmpk_handle_interrupt_status()
- *
- * Overview:    The function is responsible for extract the message from
- *				firmware. It will contain dedicated info in
- *				ws-07-0063-v06-rtl819x-command-packet-specification-070315.doc.
- *				Please refer to chapter "Interrupt Status Element".
- *
- * Input:       struct net_device *dev,
- *			u8*	pmsg		-	Message Pointer of the command packet.
- *
- * Output:      NONE
- *
- * Return:      NONE
- *
- * Revised History:
- *  When			Who			Remark
- *  05/12/2008	amy		Add this for rtl8192 porting from windows code.
- *
- *---------------------------------------------------------------------------*/
+
 static	void
 cmpk_handle_interrupt_status(
 	struct net_device *dev,
@@ -775,7 +755,6 @@ cmpk_message_handle_rx(
 		// 2007/01/22 MH Display received rx command packet info.
 		//cmpk_Display_Message(cmd_length, pcmd_buff);
 
-		// 2007/01/22 MH Add to display tx statistic.
 		//cmpk_DisplayTxStatistic(pAdapter);
 
 		total_length -= cmd_length;

@@ -43,7 +43,7 @@
 
 #include "internal.h"
 
-#include <asm/irq_regs.h>
+//#include <asm/irq_regs.h>
 
 struct remote_function_call {
 	struct task_struct	*p;
@@ -808,7 +808,7 @@ static u32 perf_event_pid(struct perf_event *event, struct task_struct *p)
 	if (event->parent)
 		event = event->parent;
 
-	return task_tgid_nr_ns(p, event->ns);
+	return task_tgid_nr_ns(p, event->ns);/* [false alarm]: linux original code*/
 }
 
 static u32 perf_event_tid(struct perf_event *event, struct task_struct *p)
@@ -819,7 +819,7 @@ static u32 perf_event_tid(struct perf_event *event, struct task_struct *p)
 	if (event->parent)
 		event = event->parent;
 
-	return task_pid_nr_ns(p, event->ns);
+	return task_pid_nr_ns(p, event->ns);/* [false alarm]: linux original code*/
 }
 
 /*
@@ -2853,7 +2853,7 @@ static void __perf_event_read(void *info)
 
 static inline u64 perf_event_count(struct perf_event *event)
 {
-	return local64_read(&event->count) + atomic64_read(&event->child_count);
+	return local64_read(&event->count) + atomic64_read(&event->child_count); /* [false alarm]: linux original code*/
 }
 
 static u64 perf_event_read(struct perf_event *event)
@@ -3515,7 +3515,7 @@ int perf_event_task_enable(void)
 	struct perf_event *event;
 
 	mutex_lock(&current->perf_event_mutex);
-	list_for_each_entry(event, &current->perf_event_list, owner_entry)
+	list_for_each_entry(event, &current->perf_event_list, owner_entry)	/*lint !e666*/
 		perf_event_for_each_child(event, perf_event_enable);
 	mutex_unlock(&current->perf_event_mutex);
 
@@ -3527,7 +3527,7 @@ int perf_event_task_disable(void)
 	struct perf_event *event;
 
 	mutex_lock(&current->perf_event_mutex);
-	list_for_each_entry(event, &current->perf_event_list, owner_entry)
+	list_for_each_entry(event, &current->perf_event_list, owner_entry)	/*lint !e666*/
 		perf_event_for_each_child(event, perf_event_disable);
 	mutex_unlock(&current->perf_event_mutex);
 
@@ -3837,7 +3837,7 @@ static int perf_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct perf_event *event = file->private_data;
 	unsigned long user_locked, user_lock_limit;
-	struct user_struct *user = current_user();
+	struct user_struct *user = current_user();	/*lint !e666*/
 	unsigned long locked, lock_limit;
 	struct ring_buffer *rb;
 	unsigned long vma_size;
@@ -3934,7 +3934,7 @@ again:
 
 	atomic_set(&rb->mmap_count, 1);
 	rb->mmap_locked = extra;
-	rb->mmap_user = get_current_user();
+	rb->mmap_user = get_current_user();	/*lint !e666*/
 
 	atomic_long_add(user_extra, &user->locked_vm);
 	vma->vm_mm->pinned_vm += extra;
@@ -4126,7 +4126,7 @@ perf_sample_ustack_size(u16 stack_size, u16 header_size,
 	 *   fit in to the remaining sample size.
 	 */
 
-	task_size  = min((u64) USHRT_MAX, perf_ustack_task_size(regs));
+	task_size  = min((u64) USHRT_MAX, perf_ustack_task_size(regs));	/*lint !e666*/
 	stack_size = min(stack_size, (u16) task_size);
 
 	/* Current header size plus static size and dynamic size. */
@@ -4511,7 +4511,7 @@ void perf_prepare_sample(struct perf_event_header *header,
 		else
 			size += sizeof(u32);
 
-		WARN_ON_ONCE(size & (sizeof(u64)-1));
+		WARN_ON_ONCE(size & (sizeof(u32)-1));
 		header->size += size;
 	}
 
@@ -4674,7 +4674,7 @@ perf_event_aux(perf_event_aux_match_cb match,
 		ctxn = pmu->task_ctx_nr;
 		if (ctxn < 0)
 			goto next;
-		ctx = rcu_dereference(current->perf_event_ctxp[ctxn]);
+		ctx = rcu_dereference(current->perf_event_ctxp[ctxn]);	/*lint !e666*/
 		if (ctx)
 			perf_event_aux_ctx(ctx, match, output, data);
 next:
@@ -4847,7 +4847,7 @@ static void perf_event_comm_event(struct perf_comm_event *comm_event)
 
 	memset(comm, 0, sizeof(comm));
 	strlcpy(comm, comm_event->task->comm, sizeof(comm));
-	size = ALIGN(strlen(comm)+1, sizeof(u64));
+	size = ALIGN(strlen(comm)+1, sizeof(u64));	/*lint !e666*/
 
 	comm_event->comm = comm;
 	comm_event->comm_size = size;
@@ -5011,7 +5011,7 @@ static void perf_event_mmap_event(struct perf_mmap_event *mmap_event)
 	}
 
 got_name:
-	size = ALIGN(strlen(name)+1, sizeof(u64));
+	size = ALIGN(strlen(name)+1, sizeof(u64));	/*lint !e666*/
 
 	mmap_event->file_name = name;
 	mmap_event->file_size = size;
@@ -6879,7 +6879,7 @@ SYSCALL_DEFINE5(perf_event_open,
 	}
 
 	if (move_group) {
-		struct perf_event_context *gctx = group_leader->ctx;
+		struct perf_event_context *gctx = group_leader->ctx;/* [false alarm]: linux original code*/
 
 		mutex_lock(&gctx->mutex);
 		perf_remove_from_context(group_leader, false);
@@ -6905,7 +6905,7 @@ SYSCALL_DEFINE5(perf_event_open,
 
 	if (move_group) {
 		synchronize_rcu();
-		perf_install_in_context(ctx, group_leader, group_leader->cpu);
+		perf_install_in_context(ctx, group_leader, group_leader->cpu);/* [false alarm]: linux original code*/
 		get_ctx(ctx);
 		list_for_each_entry(sibling, &group_leader->sibling_list,
 				    group_entry) {

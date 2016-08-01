@@ -31,6 +31,9 @@
 #include <asm/uaccess.h>
 #include <asm/tlbflush.h>
 #include <asm/shmparam.h>
+#ifdef CONFIG_SRECORDER
+#include <linux/srecorder.h>
+#endif
 
 struct vfree_deferred {
 	struct llist_head list;
@@ -282,6 +285,20 @@ static unsigned long cached_align;
 
 static unsigned long vmap_area_pcpu_hole;
 
+#ifdef CONFIG_DUMP_SYS_INFO
+unsigned long get_vmap_area_lock(void)
+{
+    return (unsigned long)&vmap_area_lock;
+}
+EXPORT_SYMBOL(get_vmap_area_lock);
+
+unsigned long get_vmap_area_list(void)
+{
+    return (unsigned long)&vmap_area_list;
+}
+EXPORT_SYMBOL(get_vmap_area_list);
+#endif
+
 static struct vmap_area *__find_vmap_area(unsigned long addr)
 {
 	struct rb_node *n = vmap_area_root.rb_node;
@@ -388,12 +405,12 @@ nocache:
 		addr = ALIGN(first->va_end, align);
 		if (addr < vstart)
 			goto nocache;
-		if (addr + size < addr)
+                if ((addr + size < addr) || (addr < first->va_end))
 			goto overflow;
 
 	} else {
 		addr = ALIGN(vstart, align);
-		if (addr + size < addr)
+                if ((addr + size < addr) || (addr < vstart))
 			goto overflow;
 
 		n = vmap_area_root.rb_node;
@@ -420,7 +437,7 @@ nocache:
 		if (addr + cached_hole_size < first->va_start)
 			cached_hole_size = first->va_start - addr;
 		addr = ALIGN(first->va_end, align);
-		if (addr + size < addr)
+                if ((addr + size < addr) || (addr < first->va_end))
 			goto overflow;
 
 		if (list_is_last(&first->list, &vmap_area_list))
@@ -441,7 +458,7 @@ found:
 	free_vmap_cache = &va->rb_node;
 	spin_unlock(&vmap_area_lock);
 
-	BUG_ON(va->va_start & (align-1));
+      BUG_ON(va->va_start & (align-1));
 	BUG_ON(va->va_start < vstart);
 	BUG_ON(va->va_end > vend);
 
@@ -891,11 +908,6 @@ static void purge_fragmented_blocks(int cpu)
 	}
 }
 
-static void purge_fragmented_blocks_thiscpu(void)
-{
-	purge_fragmented_blocks(smp_processor_id());
-}
-
 static void purge_fragmented_blocks_allcpus(void)
 {
 	int cpu;
@@ -910,7 +922,6 @@ static void *vb_alloc(unsigned long size, gfp_t gfp_mask)
 	struct vmap_block *vb;
 	unsigned long addr = 0;
 	unsigned int order;
-	int purge = 0;
 
 	BUG_ON(size & ~PAGE_MASK);
 	BUG_ON(size > PAGE_SIZE*VMAP_MAX_ALLOC);
@@ -934,17 +945,7 @@ again:
 		if (vb->free < 1UL << order)
 			goto next;
 
-		i = bitmap_find_free_region(vb->alloc_map,
-						VMAP_BBMAP_BITS, order);
-
-		if (i < 0) {
-			if (vb->free + vb->dirty == VMAP_BBMAP_BITS) {
-				/* fragmented and no outstanding allocations */
-				BUG_ON(vb->dirty != VMAP_BBMAP_BITS);
-				purge = 1;
-			}
-			goto next;
-		}
+		i = VMAP_BBMAP_BITS - vb->free;
 		addr = vb->va->va_start + (i << PAGE_SHIFT);
 		BUG_ON(addr_to_vb_idx(addr) !=
 				addr_to_vb_idx(vb->va->va_start));
@@ -959,9 +960,6 @@ again:
 next:
 		spin_unlock(&vb->lock);
 	}
-
-	if (purge)
-		purge_fragmented_blocks_thiscpu();
 
 	put_cpu_var(vmap_block_queue);
 	rcu_read_unlock();
@@ -1306,6 +1304,10 @@ static void setup_vmalloc_vm(struct vm_struct *vm, struct vmap_area *va,
 	vm->addr = (void *)va->va_start;
 	vm->size = va->va_end - va->va_start;
 	vm->caller = caller;
+#ifdef CONFIG_DEBUG_VMALLOC
+	vm->pid = current->pid;
+	vm->task_name = current->comm;
+#endif
 	va->vm = vm;
 	va->flags |= VM_VM_AREA;
 	spin_unlock(&vmap_area_lock);
@@ -1510,7 +1512,7 @@ static void __vunmap(const void *addr, int deallocate_pages)
 	kfree(area);
 	return;
 }
- 
+
 /**
  *	vfree  -  release memory allocated by vmalloc()
  *	@addr:		memory base address
@@ -1524,7 +1526,7 @@ static void __vunmap(const void *addr, int deallocate_pages)
  *	conventions for vfree() arch-depenedent would be a really bad idea)
  *
  *	NOTE: assumes that the object at *addr has a size >= sizeof(llist_node)
- *	
+ *
  */
 void vfree(const void *addr)
 {
@@ -1554,7 +1556,7 @@ EXPORT_SYMBOL(vfree);
  */
 void vunmap(const void *addr)
 {
-	BUG_ON(in_interrupt());
+	/*BUG_ON(in_interrupt());*/
 	might_sleep();
 	if (addr)
 		__vunmap(addr, 0);
@@ -1620,6 +1622,10 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 	}
 	area->pages = pages;
 	area->caller = caller;
+#ifdef CONFIG_DEBUG_VMALLOC
+	area->pid = current->pid;
+	area->task_name = current->comm;
+#endif
 	if (!area->pages) {
 		remove_vm_area(area->addr);
 		kfree(area);
@@ -2651,6 +2657,14 @@ static int s_show(struct seq_file *m, void *p)
 
 	if (v->flags & VM_VPAGES)
 		seq_printf(m, " vpages");
+
+#ifdef CONFIG_DEBUG_VMALLOC
+	if (v->pid)
+		seq_printf(m, " pid=%d", v->pid);
+
+	if (v->task_name)
+		seq_printf(m, " task name=%s", v->task_name);
+#endif
 
 	show_numa_info(m, v);
 	seq_putc(m, '\n');

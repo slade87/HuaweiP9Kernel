@@ -1,17 +1,4 @@
-/*
- *  linux/arch/arm/kernel/traps.c
- *
- *  Copyright (C) 1995-2009 Russell King
- *  Fragments that appear the same as linux/arch/i386/kernel/traps.c (C) Linus Torvalds
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- *  'traps.c' handles hardware exceptions after we have saved some state in
- *  'linux/arch/arm/lib/traps.S'.  Mostly a debugging aid, but will probably
- *  kill the offending process.
- */
+
 #include <linux/signal.h>
 #include <linux/personality.h>
 #include <linux/kallsyms.h>
@@ -34,6 +21,7 @@
 #include <asm/unwind.h>
 #include <asm/tls.h>
 #include <asm/system_misc.h>
+#include <asm/opcodes.h>
 
 static const char *handler[]= {
 	"prefetch abort",
@@ -56,6 +44,14 @@ static int __init user_debug_setup(char *str)
 __setup("user_debug=", user_debug_setup);
 #endif
 
+#ifdef CONFIG_DETECT_HUNG_TASK
+static funcptr2 hw_hung_task_hook;
+void add_hw_hungtask_hook(funcptr2 printhook)
+{
+	hw_hung_task_hook = printhook;
+}
+#endif
+
 static void dump_mem(const char *, const char *, unsigned long, unsigned long);
 
 void dump_backtrace_entry(unsigned long where, unsigned long from, unsigned long frame)
@@ -68,6 +64,11 @@ void dump_backtrace_entry(unsigned long where, unsigned long from, unsigned long
 
 	if (in_exception_text(where))
 		dump_mem("", "Exception stack", frame + 4, frame + 4 + sizeof(struct pt_regs));
+
+#ifdef CONFIG_DETECT_HUNG_TASK
+	if (hw_hung_task_hook != NULL)
+		hw_hung_task_hook(where, from);
+#endif
 }
 
 #ifndef CONFIG_ARM_UNWIND
@@ -214,6 +215,7 @@ void show_stack(struct task_struct *tsk, unsigned long *sp)
 	barrier();
 }
 
+
 #ifdef CONFIG_PREEMPT
 #define S_PREEMPT " PREEMPT"
 #else
@@ -325,7 +327,6 @@ void die(const char *str, struct pt_regs *regs, int err)
 
 	if (__die(str, err, regs))
 		sig = 0;
-
 	oops_end(flags, regs, sig);
 }
 
@@ -410,25 +411,28 @@ asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 	if (processor_mode(regs) == SVC_MODE) {
 #ifdef CONFIG_THUMB2_KERNEL
 		if (thumb_mode(regs)) {
-			instr = ((u16 *)pc)[0];
+			instr = __mem_to_opcode_thumb16(((u16 *)pc)[0]);
 			if (is_wide_instruction(instr)) {
-				instr <<= 16;
-				instr |= ((u16 *)pc)[1];
+				u16 inst2;
+				inst2 = __mem_to_opcode_thumb16(((u16 *)pc)[1]);
+				instr = __opcode_thumb32_compose(instr, inst2);
 			}
 		} else
 #endif
-			instr = *(u32 *) pc;
+			instr = __mem_to_opcode_arm(*(u32 *) pc);
 	} else if (thumb_mode(regs)) {
 		if (get_user(instr, (u16 __user *)pc))
 			goto die_sig;
+		instr = __mem_to_opcode_thumb16(instr);
 		if (is_wide_instruction(instr)) {
 			unsigned int instr2;
 			if (get_user(instr2, (u16 __user *)pc+1))
 				goto die_sig;
-			instr <<= 16;
-			instr |= instr2;
+			instr2 = __mem_to_opcode_thumb16(instr2);
+			instr = __opcode_thumb32_compose(instr, instr2);
 		}
 	} else if (get_user(instr, (u32 __user *)pc)) {
+		instr = __mem_to_opcode_arm(instr);
 		goto die_sig;
 	}
 

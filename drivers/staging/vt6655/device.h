@@ -65,7 +65,6 @@
 #include <linux/wireless.h>
 #include <net/iw_handler.h>	// New driver API
 
-//2008-0409-07, <Add> by Einsn Liu
 #ifndef WPA_SUPPLICANT_DRIVER_WEXT_SUPPORT
 #define WPA_SUPPLICANT_DRIVER_WEXT_SUPPORT
 #endif
@@ -575,7 +574,6 @@ typedef struct __device_info {
 	unsigned long ulTxPower;
 	NDIS_802_11_WEP_STATUS  eEncryptionStatus;
 	bool bTransmitKey;
-//2007-0925-01<Add>by MikeLiu
 //mike add :save old Encryption
 	NDIS_802_11_WEP_STATUS  eOldEncryptionStatus;
 

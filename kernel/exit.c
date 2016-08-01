@@ -819,9 +819,8 @@ void do_exit(long code)
 
 	cgroup_exit(tsk, 1);
 
-	module_put(task_thread_info(tsk)->exec_domain->module);
-
 	proc_exit_connector(tsk);
+
 	/*
 	 * FIXME: do that only when needed, using sched_exit tracepoint
 	 */
@@ -841,7 +840,16 @@ void do_exit(long code)
 	/*
 	 * Make sure we are holding no locks:
 	 */
-	debug_check_no_locks_held(tsk);
+	debug_check_no_locks_held();
+
+#ifdef CONFIG_ILOCKDEP
+	if (tsk->ilockdep_lock.depth > 0) {
+		pr_err("task %s[%d]exit with hold lock:\n",
+			tsk->comm, tsk->pid);
+		show_ilockdep_info(tsk);
+	}
+#endif
+
 	/*
 	 * We can do this unlocked here. The futex code uses this flag
 	 * just to verify whether the pi state cleanup has been done

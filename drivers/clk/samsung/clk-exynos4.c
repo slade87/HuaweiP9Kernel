@@ -121,18 +121,7 @@ enum exynos4_soc {
 	EXYNOS4X12,
 };
 
-/*
- * Let each supported clock get a unique id. This id is used to lookup the clock
- * for device tree based platforms. The clocks are categorized into three
- * sections: core, sclk gate and bus interface gate clocks.
- *
- * When adding a new clock to this list, it is advised to choose a clock
- * category and add it to the end of that category. That is because the the
- * device tree source file is referring to these ids and any change in the
- * sequence number of existing clocks will require corresponding change in the
- * device tree files. This limitation would go away when pre-processor support
- * for dtc would be available.
- */
+
 enum exynos4_clks {
 	none,
 

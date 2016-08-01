@@ -1,19 +1,4 @@
-/*
- *  Copyright (C) 2004,2005  ADDI-DATA GmbH for the source code of this module.
- *
- *	ADDI-DATA GmbH
- *	Dieselstrasse 3
- *	D-77833 Ottersweier
- *	Tel: +19(0)7223/9493-0
- *	Fax: +49(0)7223/9493-92
- *	http://www.addi-data.com
- *	info@addi-data.com
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
- */
+
 /*
   | Description :   APCI-1710 82X54 timer module                          |
 */
@@ -246,9 +231,7 @@ static int i_APCI1710_InsnConfigInitTimer(struct comedi_device *dev,
 	unsigned char b_OutputLevel;
 	unsigned char b_HardwareGateLevel;
 
-	/* BEGIN JK 27.10.2003 : Add the possibility to use a 40 Mhz quartz */
 	unsigned int dw_Test = 0;
-	/* END JK 27.10.2003 : Add the possibility to use a 40 Mhz quartz */
 
 	i_ReturnValue = insn->n;
 	b_ModulNbr = (unsigned char) CR_AREF(insn->chanspec);
@@ -269,7 +252,6 @@ static int i_APCI1710_InsnConfigInitTimer(struct comedi_device *dev,
 			if (b_TimerNbr <= 2) {
 				/* Test the timer mode */
 				if (b_TimerMode <= 5) {
-					/* BEGIN JK 27.10.2003 : Add the possibility to use a 40 Mhz quartz */
 					/* Test te imput clock selection */
 					/*
 					   if (((b_TimerNbr == 0) && (b_InputClockSelection == 0)) ||
@@ -284,11 +266,9 @@ static int i_APCI1710_InsnConfigInitTimer(struct comedi_device *dev,
 					     ((b_InputClockSelection == APCI1710_PCI_BUS_CLOCK) ||
 					      (b_InputClockSelection == APCI1710_FRONT_CONNECTOR_INPUT) ||
 					      (b_InputClockSelection == APCI1710_10MHZ)))) {
-						/* BEGIN JK 27.10.2003 : Add the possibility to use a 40 Mhz quartz */
 						if (((b_InputClockSelection == APCI1710_10MHZ) &&
 						     ((devpriv->s_BoardInfos.dw_MolduleConfiguration[b_ModulNbr] & 0x0000FFFFUL) >= 0x3131)) ||
 						     (b_InputClockSelection != APCI1710_10MHZ)) {
-							/* END JK 27.10.2003 : Add the possibility to use a 40 Mhz quartz */
 							/* Test the input clock level selection */
 
 							if ((b_InputClockLevel == 0) ||
@@ -297,7 +277,6 @@ static int i_APCI1710_InsnConfigInitTimer(struct comedi_device *dev,
 								if ((b_OutputLevel == 0) || (b_OutputLevel == 1)) {
 									/* Test the hardware gate level selection */
 									if ((b_HardwareGateLevel == 0) || (b_HardwareGateLevel == 1)) {
-										/* BEGIN JK 27.10.03 : Add the possibility to use a 40 Mhz quartz */
 										/* Test if version > 1.1 and clock selection = 10MHz */
 										if ((b_InputClockSelection == APCI1710_10MHZ) && ((devpriv->s_BoardInfos.dw_MolduleConfiguration[b_ModulNbr] & 0x0000FFFFUL) > 0x3131)) {
 											/* Test if 40MHz quartz on board */
@@ -310,7 +289,6 @@ static int i_APCI1710_InsnConfigInitTimer(struct comedi_device *dev,
 
 										/* Test if detection OK */
 										if (dw_Test == 1) {
-											/* END JK 27.10.03 : Add the possibility to use a 40 Mhz quartz */
 											/* Initialisation OK */
 											devpriv->s_ModuleInfo[b_ModulNbr].s_82X54ModuleInfo.s_82X54TimerInfo[b_TimerNbr].b_82X54Init = 1;
 
@@ -327,7 +305,6 @@ static int i_APCI1710_InsnConfigInitTimer(struct comedi_device *dev,
 											devpriv->s_ModuleInfo[b_ModulNbr].s_82X54ModuleInfo.s_82X54TimerInfo[b_TimerNbr].b_HardwareGateLevel = b_HardwareGateLevel;
 
 											/* Set the configuration word and disable the timer */
-											/* BEGIN JK 27.10.03 : Add the possibility to use a 40 Mhz quartz */
 											/*
 											   devpriv->s_ModuleInfo [b_ModulNbr].
 											   s_82X54ModuleInfo.
@@ -343,7 +320,6 @@ static int i_APCI1710_InsnConfigInitTimer(struct comedi_device *dev,
 											}
 
 											devpriv->s_ModuleInfo[b_ModulNbr].s_82X54ModuleInfo.s_82X54TimerInfo[b_TimerNbr].dw_ConfigurationWord = (unsigned int)(((b_HardwareGateLevel << 0) & 0x1) | ((b_InputClockLevel << 1) & 0x2) | (((~b_OutputLevel & 1) << 2) & 0x4) | ((b_InputClockSelection << 4) & 0x30));
-											/* END JK 27.10.03 : Add the possibility to use a 40 Mhz quartz */
 											outl(devpriv->s_ModuleInfo[b_ModulNbr].s_82X54ModuleInfo.s_82X54TimerInfo[b_TimerNbr].dw_ConfigurationWord, devpriv->s_BoardInfos.ui_Address + 32 + (b_TimerNbr * 4) + (64 * b_ModulNbr));
 
 											/* Initialise the 82X54 Timer */
@@ -351,13 +327,11 @@ static int i_APCI1710_InsnConfigInitTimer(struct comedi_device *dev,
 
 											/* Write the reload value */
 											outl(ul_ReloadValue, devpriv->s_BoardInfos.ui_Address + 0 + (b_TimerNbr * 4) + (64 * b_ModulNbr));
-											/* BEGIN JK 27.10.03 : Add the possibility to use a 40 Mhz quartz */
 										}	/*  if (dw_Test == 1) */
 										else {
 											/* Input timer clock selection is wrong */
 											i_ReturnValue = -6;
 										}	/*  if (dw_Test == 1) */
-										/* END JK 27.10.03 : Add the possibility to use a 40 Mhz quartz */
 									}	/*  if ((b_HardwareGateLevel == 0) || (b_HardwareGateLevel == 1)) */
 									else {
 										/* Selection from hardware gate level is wrong */

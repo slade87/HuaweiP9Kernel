@@ -111,11 +111,18 @@ struct fw_rsc_hdr {
  * please update it as needed.
  */
 enum fw_resource_type {
-	RSC_CARVEOUT	= 0,
-	RSC_DEVMEM	= 1,
-	RSC_TRACE	= 2,
-	RSC_VDEV	= 3,
-	RSC_LAST	= 4,
+    RSC_CARVEOUT        = 0,
+    RSC_DEVMEM          = 1,
+    RSC_TRACE           = 2,
+    RSC_VDEV            = 3,
+    RSC_VERSION         = 4,
+    RSC_RDR_MEMORY      = 5,
+	RSC_DYNAMIC_MEMORY  = 6,
+    RSC_RESERVED_MEMORY = 7,
+    RSC_CDA             = 8,
+    RSC_SHARED_PARA     = 9,
+
+    RSC_LAST	        = 10,
 };
 
 #define FW_RSC_ADDR_ANY (0xFFFFFFFFFFFFFFFF)
@@ -234,6 +241,72 @@ struct fw_rsc_trace {
 } __packed;
 
 /**
+ * struct fw_rsc_trace - print version information
+ * @magic: magic word
+ * @module: module
+ * @version: version info
+ * @built_time: built time
+ * @reserved: reserved (must be zero)
+ */
+struct fw_rsc_version {
+    unsigned int magic;
+    char module[8];
+    char version[8];
+    char build_time[32];
+    char reserved[4];
+} __packed;
+
+/**
+ * struct fw_rsc_carveout - physically non-contiguous memory request
+ * @da: device address
+ * @pa: physical address
+ * @len: length (in bytes)
+ * @flags: iommu protection flags
+ * @reserved: reserved (must be zero)
+ * @name: human-readable name of the requested memory region
+ */
+struct fw_rsc_dynamic_memory {
+	u32 da;
+	u32 pa;
+	u32 len;
+	u32 flags;
+	u32 reserved;
+	u8 name[32];
+} __packed;
+
+/**
+ * struct fw_rsc_carveout - physically reserved memory request
+ * @da: device address
+ * @pa: physical address
+ * @len: length (in bytes)
+ * @flags: iommu protection flags
+ * @reserved: reserved (must be zero)
+ * @name: human-readable name of the requested memory region
+ */
+struct fw_rsc_reserved_memory {
+	u32 da;
+	u32 pa;
+	u32 len;
+	u32 flags;
+	u32 reserved;
+	u8 name[32];
+} __packed;
+
+/**
+ * struct fw_rsc_trace - cda buffer declaration
+ * @da: device address
+ * @len: length (in bytes)
+ * @reserved: reserved (must be zero)
+ * @name: human-readable name of the trace buffer
+ */
+struct fw_rsc_cda {
+	u32 da;
+	u32 len;
+	u32 reserved;
+	u8 name[32];
+} __packed;
+
+/**
  * struct fw_rsc_vdev_vring - vring descriptor entry
  * @da: device address
  * @align: the alignment between the consumer and producer parts of the vring
@@ -323,6 +396,30 @@ struct rproc_mem_entry {
 	struct list_head node;
 };
 
+/**
+ * struct rproc_cache_entry - memory cache entry
+ * @va:	virtual address
+ * @len: length, in bytes
+ * @node: list node
+ */
+struct rproc_cache_entry {
+	void *va;
+	u32 len;
+	struct list_head node;
+};
+
+/**
+ * struct rproc_page - page memory
+ * @va:	virtual address of pages
+ * @num: number of pages
+ * @node: list node
+ */
+struct rproc_page {
+	void *va;
+	u32 num;
+	struct list_head node;
+};
+
 struct rproc;
 
 /**
@@ -393,6 +490,7 @@ enum rproc_crash_type {
  * @mappings: list of iommu mappings we initiated, needed on shutdown
  * @firmware_loading_complete: marks e/o asynchronous firmware loading
  * @bootaddr: address of first instruction to boot rproc with (optional)
+ * @ipc_addr: address of communicatting with rproc through share memory
  * @rvdevs: list of remote virtio devices
  * @notifyids: idr for dynamically assigning rproc-wide unique notify ids
  * @index: index of this rproc device
@@ -410,6 +508,7 @@ struct rproc {
 	struct iommu_domain *domain;
 	const char *name;
 	const char *firmware;
+	const char *bootware;
 	void *priv;
 	const struct rproc_ops *ops;
 	struct device dev;
@@ -420,16 +519,26 @@ struct rproc {
 	struct dentry *dbg_dir;
 	struct list_head traces;
 	int num_traces;
+    int num_cdas;
 	struct list_head carveouts;
 	struct list_head mappings;
+	struct list_head dynamic_mems;
+	struct list_head reserved_mems;
+	struct list_head cdas;
+	struct list_head caches;
+    struct list_head pages;
 	struct completion firmware_loading_complete;
 	u32 bootaddr;
+    bool rproc_enable_flag;
+    bool sync_flag;
+    unsigned int ipc_addr;
 	struct list_head rvdevs;
 	struct idr notifyids;
 	int index;
 	struct work_struct crash_handler;
 	unsigned crash_cnt;
 	struct completion crash_comp;
+	struct completion boot_comp;
 	bool recovery_disabled;
 	int max_notifyid;
 	struct resource_table *table_ptr;
@@ -479,6 +588,8 @@ struct rproc_vdev {
 	u32 rsc_offset;
 };
 
+int rproc_bootware_attach(struct rproc *rproc, const char *bootware);
+
 struct rproc *rproc_alloc(struct device *dev, const char *name,
 				const struct rproc_ops *ops,
 				const char *firmware, int len);
@@ -501,5 +612,7 @@ static inline struct rproc *vdev_to_rproc(struct virtio_device *vdev)
 
 	return rvdev->rproc;
 }
+
+extern int rproc_enable(struct rproc *rproc);
 
 #endif /* REMOTEPROC_H */

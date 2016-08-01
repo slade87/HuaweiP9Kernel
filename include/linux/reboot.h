@@ -10,9 +10,22 @@
 #define SYS_HALT	0x0002	/* Notify of system halt */
 #define SYS_POWER_OFF	0x0003	/* Notify of system power off */
 
+enum reboot_mode {
+	REBOOT_COLD = 0,
+	REBOOT_WARM,
+};
+
 extern int register_reboot_notifier(struct notifier_block *);
 extern int unregister_reboot_notifier(struct notifier_block *);
 
+#ifdef CONFIG_SRECORDER
+#ifdef CONFIG_POWERCOLLAPSE
+#ifndef CONFIG_KPROBES
+extern int register_emergency_reboot_notifier(struct notifier_block *);
+extern int unregister_emergency_reboot_notifier(struct notifier_block *);
+#endif
+#endif
+#endif /* CONFIG_SRECORDER */
 
 /*
  * Architecture-specific implementations of sys_reboot commands.

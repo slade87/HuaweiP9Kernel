@@ -14,6 +14,7 @@
 #include <linux/init.h>
 #include <linux/smp.h>
 #include <linux/spinlock.h>
+#include <linux/io.h>
 
 #include <asm/mcpm.h>
 #include <asm/smp.h>
@@ -35,9 +36,14 @@ static int __cpuinit mcpm_boot_secondary(unsigned int cpu, struct task_struct *i
 		 __func__, cpu, pcpu, pcluster);
 
 	mcpm_set_entry_vector(pcpu, pcluster, NULL);
+#if !defined (CONFIG_HISILICON_PLATFORM_PM_SLEEP)
+    /*由于hisi_pm_init函数未实现，mcpm的上电接口会失败，故先打桩*/
+    ret = 0;
+#else
 	ret = mcpm_cpu_power_up(pcpu, pcluster);
 	if (ret)
 		return ret;
+#endif
 	mcpm_set_entry_vector(pcpu, pcluster, secondary_startup);
 	arch_send_wakeup_ipi_mask(cpumask_of(cpu));
 	dsb_sev();
@@ -73,6 +79,38 @@ static void mcpm_cpu_die(unsigned int cpu)
 
 #endif
 
+#if defined (CHIP_BB_HI6210)
+/*需要将从核跳转的入口地址(函数secondary_startup的地址)写到SRAM的标志单元中*/
+extern void secondary_startup(void);
+#include <linux/hisi/hi6xxx-iomap.h>                   /* For IO_ADDRESS access */
+
+static void mcpm_smp_prepare_cpus(unsigned int cpu)
+{
+    unsigned long addr;
+    static int flag = 0;
+
+    if (0 != flag)
+        return;
+
+    flag = 1;
+
+    addr = (unsigned long)ioremap(MEMORY_AXI_SECOND_CPU_BOOT_ADDR, 0x10);
+
+    printk("mcpm_smp_prepare_cpus: addr 0x%lx at 0x%x\n", addr, virt_to_phys(secondary_startup));
+
+    /*
+     * Write the address of secondary startup into the system-wide flags
+     * register. The BootMonitor waits for this register to become
+     * non-zero.
+     */
+    *(volatile int *)(addr) = virt_to_phys(secondary_startup);
+
+    iounmap((void __iomem*)addr);
+
+    return;
+}
+#endif
+
 static struct smp_operations __initdata mcpm_smp_ops = {
 	.smp_init_cpus		= simple_smp_init_cpus,
 	.smp_boot_secondary	= mcpm_boot_secondary,
@@ -80,6 +118,9 @@ static struct smp_operations __initdata mcpm_smp_ops = {
 #ifdef CONFIG_HOTPLUG_CPU
 	.cpu_disable		= mcpm_cpu_disable,
 	.cpu_die		= mcpm_cpu_die,
+#endif
+#if defined (CHIP_BB_HI6210)
+    .smp_prepare_cpus = mcpm_smp_prepare_cpus
 #endif
 };
 

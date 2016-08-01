@@ -298,12 +298,18 @@ extern void _memset_io(volatile void __iomem *, int, size_t);
 
 #define readb(c)		({ u8  __v = readb_relaxed(c); __iormb(); __v; })
 #define readw(c)		({ u16 __v = readw_relaxed(c); __iormb(); __v; })
-#define readl(c)		({ u32 __v = readl_relaxed(c); __iormb(); __v; })
-
+#if 1 //clb
+#define readl(c)		({ u32 __v = readl_relaxed((void *)c); __iormb(); __v; })
+#else
+#define readl(c)        ({ u32 __v = readl_relaxed(c); __iormb(); __v; })
+#endif
 #define writeb(v,c)		({ __iowmb(); writeb_relaxed(v,c); })
 #define writew(v,c)		({ __iowmb(); writew_relaxed(v,c); })
-#define writel(v,c)		({ __iowmb(); writel_relaxed(v,c); })
-
+#if 1 //clb
+#define writel(v,c)		({ __iowmb(); writel_relaxed(v,(void *)c); })
+#else
+#define writel(v,c)     ({ __iowmb(); writel_relaxed(v,c); }
+#endif
 #define readsb(p,d,l)		__raw_readsb(p,d,l)
 #define readsw(p,d,l)		__raw_readsw(p,d,l)
 #define readsl(p,d,l)		__raw_readsl(p,d,l)

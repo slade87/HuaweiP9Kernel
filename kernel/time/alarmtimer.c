@@ -195,8 +195,14 @@ static enum hrtimer_restart alarmtimer_fired(struct hrtimer *timer)
 	}
 	spin_unlock_irqrestore(&base->lock, flags);
 
-	return ret;
+	return ret;/*[false alarm]*/
 
+}
+
+ktime_t alarm_expires_remaining(const struct alarm *alarm)
+{
+	struct alarm_base *base = &alarm_bases[alarm->type];
+	return ktime_sub(alarm->node.expires, base->gettime());
 }
 
 #ifdef CONFIG_RTC_CLASS
@@ -213,7 +219,7 @@ static enum hrtimer_restart alarmtimer_fired(struct hrtimer *timer)
 static int alarmtimer_suspend(struct device *dev)
 {
 	struct rtc_time tm;
-	ktime_t min, now;
+	ktime_t min, now, alarm;
 	unsigned long flags;
 	struct rtc_device *rtc;
 	int i;
@@ -249,6 +255,18 @@ static int alarmtimer_suspend(struct device *dev)
 
 	if (ktime_to_ns(min) < 2 * NSEC_PER_SEC) {
 		__pm_wakeup_event(ws, 2 * MSEC_PER_SEC);
+
+		rtc_read_time(rtc, &tm);
+	    alarm = rtc_tm_to_ktime(tm);
+	    alarm = ktime_add(alarm, min);
+	    tm = rtc_ktime_to_tm(alarm);
+		printk(KERN_ERR "\n Too short to sleep \n");
+		printk(KERN_ERR "[%s:%d]  time %d-%d-%d %d:%d:%d\n",
+		   __FUNCTION__, __LINE__,
+	       tm.tm_year+1900, tm.tm_mon+1,
+	       tm.tm_mday, tm.tm_hour,
+	       tm.tm_min, tm.tm_sec);
+
 		return -EBUSY;
 	}
 
@@ -305,7 +323,7 @@ void alarm_init(struct alarm *alarm, enum alarmtimer_type type,
 }
 
 /**
- * alarm_start - Sets an alarm to fire
+ * alarm_start - Sets an absolute alarm to fire
  * @alarm: ptr to alarm to set
  * @start: time to run the alarm
  */
@@ -322,6 +340,31 @@ int alarm_start(struct alarm *alarm, ktime_t start)
 				HRTIMER_MODE_ABS);
 	spin_unlock_irqrestore(&base->lock, flags);
 	return ret;
+}
+
+/**
+ * alarm_start_relative - Sets a relative alarm to fire
+ * @alarm: ptr to alarm to set
+ * @start: time relative to now to run the alarm
+ */
+int alarm_start_relative(struct alarm *alarm, ktime_t start)
+{
+	struct alarm_base *base = &alarm_bases[alarm->type];
+
+	start = ktime_add(start, base->gettime());
+	return alarm_start(alarm, start);
+}
+
+void alarm_restart(struct alarm *alarm)
+{
+	struct alarm_base *base = &alarm_bases[alarm->type];
+	unsigned long flags;
+
+	spin_lock_irqsave(&base->lock, flags);
+	hrtimer_set_expires(&alarm->timer, alarm->node.expires);
+	hrtimer_restart(&alarm->timer);
+	alarmtimer_enqueue(base, alarm);
+	spin_unlock_irqrestore(&base->lock, flags);
 }
 
 /**
@@ -394,6 +437,12 @@ u64 alarm_forward(struct alarm *alarm, ktime_t now, ktime_t interval)
 	return overrun;
 }
 
+u64 alarm_forward_now(struct alarm *alarm, ktime_t interval)
+{
+	struct alarm_base *base = &alarm_bases[alarm->type];
+
+	return alarm_forward(alarm, base->gettime(), interval);
+}
 
 
 

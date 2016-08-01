@@ -245,6 +245,8 @@ static inline void put_cred(const struct cred *_cred)
 {
 	struct cred *cred = (struct cred *) _cred;
 
+        BUG_ON(atomic_read(&cred->usage) == 0);
+
 	validate_creds(cred);
 	if (atomic_dec_and_test(&(cred)->usage))
 		__put_cred(cred);

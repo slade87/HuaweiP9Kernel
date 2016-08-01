@@ -213,7 +213,6 @@ pDevice->bSameBSSMaxNum = jj;
         if (pSelect != NULL) {
             pSelect->bSelected = true;
                         if (pDevice->bRoaming == false)  {
-	//       Einsn Add @20070907
 			memcpy(pbyDesireSSID,pCurrBSS->abySSID,WLAN_IEHDR_LEN + WLAN_SSID_MAXLEN + 1) ;
                                                 }
 

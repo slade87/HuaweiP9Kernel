@@ -22,10 +22,14 @@
 #include <linux/errno.h>
 #include <linux/err.h>
 #include <linux/types.h>
+#include <linux/scatterlist.h>
 
 #define IOMMU_READ	(1)
 #define IOMMU_WRITE	(2)
 #define IOMMU_CACHE	(4) /* DMA cache coherency */
+#define IOMMU_EXEC  (8)	
+#define IOMMU_DEVICE (16)	
+#define IOMMU_SEC    (32)
 
 struct iommu_ops;
 struct iommu_group;
@@ -47,12 +51,24 @@ struct iommu_domain_geometry {
 	bool force_aperture;       /* DMA only allowed in mappable range? */
 };
 
+struct iommu_domain_capablity {
+	unsigned int  iova_start;  /* First address that can be mapped    */
+	unsigned int  iova_end;    /* Last address that can be mapped     */
+	unsigned int  iova_align;  /* domain io address aligned           */
+	unsigned int  pg_sz;       /* io domain page size                 */
+	unsigned int  pgtbl_base;
+	bool off_on;               /* iommu is online or offline          */
+};
+
+
 struct iommu_domain {
+	char domain_name[20];
 	struct iommu_ops *ops;
 	void *priv;
 	iommu_fault_handler_t handler;
 	void *handler_token;
-	struct iommu_domain_geometry geometry;
+	struct iommu_domain_geometry  geometry;
+	struct iommu_domain_capablity capablity;
 };
 
 #define IOMMU_CAP_CACHE_COHERENCY	0x1
@@ -62,7 +78,29 @@ enum iommu_attr {
 	DOMAIN_ATTR_GEOMETRY,
 	DOMAIN_ATTR_PAGING,
 	DOMAIN_ATTR_WINDOWS,
+	DOMAIN_ATTR_CAPABLITY,
+	DOMAIN_ATTR_FORMAT_DATA,
 	DOMAIN_ATTR_MAX,
+};
+
+/* metadata for iommu mapping */
+struct iommu_map_format {
+	unsigned long iova_start;
+	unsigned long iova_size;
+	unsigned long iommu_ptb_base;
+	unsigned long iommu_iova_base;
+	unsigned long header_size;
+	unsigned long phys_page_line;
+	unsigned long virt_page_line;
+	unsigned long is_tile;
+	unsigned long prot;
+};
+
+struct tile_format {
+	unsigned long header_size;
+	unsigned long is_tile;
+	unsigned long phys_page_line;
+	unsigned long virt_page_line;
 };
 
 #ifdef CONFIG_IOMMU_API
@@ -92,6 +130,17 @@ struct iommu_ops {
 		   phys_addr_t paddr, size_t size, int prot);
 	size_t (*unmap)(struct iommu_domain *domain, unsigned long iova,
 		     size_t size);
+
+	int (*map_range)(struct iommu_domain *domain, unsigned long iova,
+		    struct scatterlist *sg, size_t size, int prot);
+	size_t (*unmap_range)(struct iommu_domain *domain, unsigned long iova,
+		      size_t size);
+	int (*map_tile)(struct iommu_domain *domain, unsigned long iova,
+	   struct scatterlist *sg, size_t size, int prot,
+	   struct tile_format *format);
+	size_t (*unmap_tile)(struct iommu_domain *domain, unsigned long iova,
+	     size_t size);
+
 	phys_addr_t (*iova_to_phys)(struct iommu_domain *domain, dma_addr_t iova);
 	int (*domain_has_cap)(struct iommu_domain *domain,
 			      unsigned long cap);
@@ -102,6 +151,8 @@ struct iommu_ops {
 			       enum iommu_attr attr, void *data);
 	int (*domain_set_attr)(struct iommu_domain *domain,
 			       enum iommu_attr attr, void *data);
+	int (*get_pgtbl_base)(struct iommu_domain *domain, unsigned long iova_start,
+			unsigned long *ptb_base, unsigned long *iova_base);
 
 	/* Window handling functions */
 	int (*domain_window_enable)(struct iommu_domain *domain, u32 wnd_nr,
@@ -135,6 +186,20 @@ extern int iommu_map(struct iommu_domain *domain, unsigned long iova,
 		     phys_addr_t paddr, size_t size, int prot);
 extern size_t iommu_unmap(struct iommu_domain *domain, unsigned long iova,
 		       size_t size);
+
+int iommu_map_range(struct iommu_domain *domain, unsigned long iova,
+		    struct scatterlist *sg, size_t size, int prot);
+
+extern size_t iommu_unmap_range(struct iommu_domain *domain, unsigned long iova,
+		      size_t size);
+
+int iommu_map_tile(struct iommu_domain *domain, unsigned long iova,
+		    struct scatterlist *sg, size_t size, int prot,
+		    struct tile_format *format);
+
+int iommu_unmap_tile(struct iommu_domain *domain, unsigned long iova,
+		      size_t size);
+
 extern phys_addr_t iommu_iova_to_phys(struct iommu_domain *domain, dma_addr_t iova);
 extern int iommu_domain_has_cap(struct iommu_domain *domain,
 				unsigned long cap);
@@ -168,7 +233,8 @@ extern int iommu_domain_get_attr(struct iommu_domain *domain, enum iommu_attr,
 				 void *data);
 extern int iommu_domain_set_attr(struct iommu_domain *domain, enum iommu_attr,
 				 void *data);
-
+extern int iommu_get_pgtbl_base(struct iommu_domain *domain, unsigned long iova_start,
+				unsigned long *ptb_base, unsigned long *iova_base);
 /* Window handling function prototypes */
 extern int iommu_domain_window_enable(struct iommu_domain *domain, u32 wnd_nr,
 				      phys_addr_t offset, u64 size,
@@ -368,6 +434,12 @@ static inline int iommu_domain_get_attr(struct iommu_domain *domain,
 
 static inline int iommu_domain_set_attr(struct iommu_domain *domain,
 					enum iommu_attr attr, void *data)
+{
+	return -EINVAL;
+}
+
+static inline int iommu_get_pgtbl_base(struct iommu_domain *domain, unsigned long iova_start,
+					unsigned long *ptb_base, unsigned long *iova_base)
 {
 	return -EINVAL;
 }

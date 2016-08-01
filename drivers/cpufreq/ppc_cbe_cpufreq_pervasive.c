@@ -112,4 +112,3 @@ int cbe_cpufreq_get_pmode(int cpu)
 
 	return ret;
 }
-

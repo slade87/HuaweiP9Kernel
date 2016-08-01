@@ -815,7 +815,7 @@ next:
 					       prio, q->ptr[level] + prio,
 					       q->last_ptr_id[level] + prio);
 
-			if (cl == start)	/* fix start if we just deleted it */
+			if (cl == start)
 				start = next;
 			cl = next;
 			goto next;

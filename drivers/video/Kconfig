@@ -21,7 +21,7 @@ source "drivers/gpu/vga/Kconfig"
 
 source "drivers/gpu/drm/Kconfig"
 
-source "drivers/gpu/host1x/Kconfig"
+source "drivers/gpu/stub/Kconfig"
 
 config VGASTATE
        tristate
@@ -38,6 +38,23 @@ config VIDEOMODE_HELPERS
 
 config HDMI
 	bool
+
+config HDMI_K3
+        bool "K3 HDMI support"
+        depends on ARCH_HIXXX
+        default y
+config HDCP_ENABLE_K3
+        bool "HDCP enable in K3 HDMI module"
+        depends on HDMI_K3
+        default n
+config MHL_K3
+        bool "MHL mode enable"
+        depends on HDMI_K3
+        default y
+config VEXPRESS_DVI_CONTROL
+	bool "Versatile Express DVI control"
+	depends on FB && VEXPRESS_CONFIG
+	default y
 
 menuconfig FB
 	tristate "Support for frame buffer devices"
@@ -166,6 +183,10 @@ config FB_SYS_IMAGEBLIT
 	  Include the sys_imageblit function for generic software image
 	  blitting. This is used by drivers that don't provide their own
 	  (accelerated) version and the framebuffer is in system RAM.
+
+config BACKLIGHT_10000
+	bool "lcd backlight level"
+	default n
 
 menuconfig FB_FOREIGN_ENDIAN
 	bool "Framebuffer foreign endianness support"
@@ -312,7 +333,8 @@ config FB_PM2_FIFO_DISCONNECT
 
 config FB_ARMCLCD
 	tristate "ARM PrimeCell PL110 support"
-	depends on FB && ARM && ARM_AMBA
+	depends on ARM || ARM64 || COMPILE_TEST
+	depends on FB && ARM_AMBA
 	select FB_CFB_FILLRECT
 	select FB_CFB_COPYAREA
 	select FB_CFB_IMAGEBLIT
@@ -325,6 +347,21 @@ config FB_ARMCLCD
 	  inserted into and removed from the running kernel), say M
 	  here and read <file:Documentation/kbuild/modules.txt>.  The module
 	  will be called amba-clcd.
+
+config FB_ARMHDLCD
+	tristate "ARM High Definition LCD support"
+	depends on FB && ARM
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	help
+	  This framebuffer device driver is for the ARM High Definition
+	  Colour LCD controller.
+
+	  If you want to compile this as a module (=code which can be
+	  inserted into and removed from the running kernel), say M
+	  here and read <file:Documentation/kbuild/modules.txt>.  The module
+	  will be called arm-hdlcd.
 
 config FB_ACORN
 	bool "Acorn VIDC support"
@@ -2453,6 +2490,45 @@ config FB_HYPERV
 	help
 	  This framebuffer driver supports Microsoft Hyper-V Synthetic Video.
 
+config LCD_FHD_OTM1902B
+        tristate "JDI_OTM1902B 1080P LCD support"
+        help
+          JDI 1080P LCD support, please choose it.
+config LCD_JDI_OTM1282B
+        tristate "JDI_OTM1282B 720p LCD support"
+        help
+          JDI 720p LCD support, please choose it.
+
+config LCD_TM_NT35521
+        tristate "TM_NT35521 720p LCD support"
+        help
+          TM 720p LCD support, please choose it.
+		  
+config LCD_BOE_NT35521
+        tristate "BOE_NT35521 720p LCD support"
+        help
+          BOE 720p LCD support, please choose it.
+	  
+config LCD_CMI_NT35521
+        tristate "CMI_NT35521 720p LCD support"
+        help
+          CMI 720p LCD support, please choose it.
+
+config LCD_YASSY_HX8394
+        tristate "YASSY_HX8394 720p LCD support"
+        help
+          YASSY 720p LCD support, please choose it.
+
+config LCD_CMI_OTM1282B
+        tristate "CMI_OTM1282B 720p LCD support"
+        help
+          JDI 720p LCD support, please choose it.
+          
+
+config LCD_JDI_LPM070W425C
+        tristate "JDI_LPM070W425C 1200*1920 LCD support"
+        help
+          JDI LPM070W425C LCD support, please choose it.
 config FB_SIMPLE
 	bool "Simple framebuffer support"
 	depends on (FB = y) && OF
@@ -2470,11 +2546,73 @@ config FB_SIMPLE
 	  through device tree, or potentially plain old platform data in the
 	  future.
 
+config HISI_FB_FAKE
+	tristate "HISI Framebuffer Fake support"
+	depends on FB
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	help
+	  This framebuffer driver supports HISI FB Fake.
+
+config HISI_FB_3630
+	tristate "HISI 3630 Framebuffer support"
+	depends on FB
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	help
+	  This framebuffer driver supports HISI3630 FB.
+
+config HISI_FB_3635
+	tristate "HISI 3635 Framebuffer support"
+	depends on FB
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	help
+	  This framebuffer driver supports HISI3635 FB.
+
+config HISI_FB_3650
+	tristate "HISI FB 3650 Framebuffer support"
+	depends on FB
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	help
+	  This framebuffer driver supports HISI3650 FB.
+
+config HISI_FB_6250
+	tristate "HISI FB 6250 Framebuffer support"
+	depends on FB
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	help
+	  This framebuffer driver supports HISI6250 FB.
+
+config HISI_FB_3660
+	tristate "HISI FB 3660 Framebuffer support"
+	depends on FB
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	help
+	  This framebuffer driver supports HISI3660 FB.
+
+config FASTBOOT_DISP_ENABLE
+	tristate "HISI fastboot display enable support"
+	depends on FB
+	help
+	  Display system have already initialized in fastboot.
+
+
 source "drivers/video/omap/Kconfig"
 source "drivers/video/omap2/Kconfig"
 source "drivers/video/exynos/Kconfig"
 source "drivers/video/mmp/Kconfig"
 source "drivers/video/backlight/Kconfig"
+source "drivers/video/adf/Kconfig"
 
 if VT
 	source "drivers/video/console/Kconfig"
@@ -2510,5 +2648,37 @@ config FB_SSD1307
 	help
 	  This driver implements support for the Solomon SSD1307
 	  OLED controller over I2C.
+
+config PARTIAL_UPDATES
+	tristate "partial updates support on K3 platform"
+	help
+	partial updates support on K3 platform.
+
+config REPORT_VSYNC
+	tristate "report vsync support on K3 platform"
+	help
+	report vsync support on K3 platform.
+
+config FB_HI6220_CLCD
+    tristate "BALONG  HI6220 ARM LCD support"
+	depends on FB && (ARM||ARM64) && ARM_AMBA 
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	help
+	  This framebuffer device driver is for the ARM PrimeCell PL110
+	  Colour LCD controller.  ARM PrimeCells provide the building
+	  blocks for System on a Chip devices.
+
+	  If you want to compile this as a module (=code which can be
+	  inserted into and removed from the running kernel), say M
+	  here and read <file:Documentation/kbuild/modules.txt>.  The module
+	  will be called amba-clcd.
+	  
+config HISI_HI6210_IOMMU
+    tristate "support media MMU"
+    default n
+    ---help---
+      This is the media MMU base on hi6210
 
 endmenu

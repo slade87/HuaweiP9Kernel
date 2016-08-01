@@ -22,7 +22,6 @@ struct device;
 /*
  * LED Core
  */
-
 enum led_brightness {
 	LED_OFF		= 0,
 	LED_HALF	= 127,

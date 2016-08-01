@@ -1,30 +1,5 @@
 
-/*
 
-  Linux Driver for BusLogic MultiMaster and FlashPoint SCSI Host Adapters
-
-  Copyright 1995-1998 by Leonard N. Zubkoff <lnz@dandelion.com>
-
-  This program is free software; you may redistribute and/or modify it under
-  the terms of the GNU General Public License Version 2 as published by the
-  Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful, but
-  WITHOUT ANY WARRANTY, without even the implied warranty of MERCHANTABILITY
-  or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-  for complete details.
-
-  The author respectfully requests that any modifications to this software be
-  sent directly to him for evaluation and testing.
-
-  Special thanks to Wayne Yen, Jin-Lon Hon, and Alex Win of BusLogic, whose
-  advice has been invaluable, to David Gentzel, for writing the original Linux
-  BusLogic driver, and to Paul Gortmaker, for being such a dedicated test site.
-
-  Finally, special thanks to Mylex/BusLogic for making the FlashPoint SCCB
-  Manager available as freely redistributable source code.
-
-*/
 
 #define BusLogic_DriverVersion		"2.1.16"
 #define BusLogic_DriverDate		"18 July 2002"
@@ -2135,14 +2110,7 @@ static void __init BusLogic_InitializeHostStructure(struct BusLogic_HostAdapter
 	Host->cmd_per_lun = HostAdapter->UntaggedQueueDepth;
 }
 
-/*
-  BusLogic_SlaveConfigure will actually set the queue depth on individual
-  scsi devices as they are permanently added to the device chain.  We
-  shamelessly rip off the SelectQueueDepths code to make this work mostly
-  like it used to.  Since we don't get called once at the end of the scan
-  but instead get called for each device, we have to do things a bit
-  differently.
-*/
+
 static int BusLogic_SlaveConfigure(struct scsi_device *Device)
 {
 	struct BusLogic_HostAdapter *HostAdapter = (struct BusLogic_HostAdapter *) Device->host->hostdata;
@@ -2279,10 +2247,7 @@ static int __init BusLogic_init(void)
 		memcpy(HostAdapter, PrototypeHostAdapter, sizeof(struct BusLogic_HostAdapter));
 		HostAdapter->SCSI_Host = Host;
 		HostAdapter->HostNumber = Host->host_no;
-		/*
-		   Add Host Adapter to the end of the list of registered BusLogic
-		   Host Adapters.
-		 */
+		
 		list_add_tail(&HostAdapter->host_list, &BusLogic_host_list);
 
 		/*

@@ -972,7 +972,7 @@ do {								\
 
 /*---------------------  Export Functions  --------------------------*/
 
-extern unsigned short TxRate_iwconfig;//2008-5-8 <add> by chester
+extern unsigned short TxRate_iwconfig;
 void MACvReadAllRegs(unsigned long dwIoBase, unsigned char *pbyMacRegs);
 
 bool MACbIsRegBitsOn(unsigned long dwIoBase, unsigned char byRegOfs, unsigned char byTestBits);

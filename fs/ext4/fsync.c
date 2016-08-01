@@ -35,6 +35,15 @@
 #include <trace/events/ext4.h>
 
 /*
+#include <trace/iotrace.h>
+DEFINE_TRACE(ext4_sync_file_begin);
+DEFINE_TRACE(ext4_sync_file_end);
+*/
+#include <trace/iotrace.h>
+DEFINE_TRACE(ext4_sync_write_wait_end);
+DEFINE_TRACE(ext4_sync_file_end);
+
+/*
  * If we're not journaling and this is a just-created file, we have to
  * sync our parent directory (if it was freshly created) since
  * otherwise it will only be written by writeback, leaving a huge
@@ -123,10 +132,14 @@ int ext4_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 	J_ASSERT(ext4_journal_current_handle() == NULL);
 
 	trace_ext4_sync_file_enter(file, datasync);
+	//trace_ext4_sync_file_begin(file, datasync);
 
 	ret = filemap_write_and_wait_range(inode->i_mapping, start, end);
 	if (ret)
 		return ret;
+
+    trace_ext4_sync_write_wait_end(file, datasync);
+
 	mutex_lock(&inode->i_mutex);
 
 	if (inode->i_sb->s_flags & MS_RDONLY)
@@ -175,5 +188,6 @@ int ext4_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
  out:
 	mutex_unlock(&inode->i_mutex);
 	trace_ext4_sync_file_exit(inode, ret);
+	trace_ext4_sync_file_end(file, ret);
 	return ret;
 }

@@ -232,7 +232,7 @@ int fsnotify_add_inode_mark(struct fsnotify_mark *mark,
 
 	BUG_ON(last == NULL);
 	/* mark should be the last entry.  last is the current last entry */
-	hlist_add_after_rcu(&last->i.i_list, &mark->i.i_list);
+	hlist_add_after_rcu(&last->i.i_list, &mark->i.i_list);/* [false alarm] */
 out:
 	fsnotify_recalc_inode_mask_locked(inode);
 	spin_unlock(&inode->i_lock);
@@ -302,12 +302,7 @@ void fsnotify_unmount_inodes(struct list_head *list)
 						struct inode, i_sb_list);
 		}
 
-		/*
-		 * We can safely drop inode_sb_list_lock here because either
-		 * we actually hold references on both inode and next_i or
-		 * end of list.  Also no new inodes will be added since the
-		 * umount has begun.
-		 */
+		
 		spin_unlock(&inode_sb_list_lock);
 
 		if (need_iput_tmp)

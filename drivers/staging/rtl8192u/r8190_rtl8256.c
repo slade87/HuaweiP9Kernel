@@ -241,7 +241,6 @@ void PHY_SetRF8256CCKTxPower(struct net_device*	dev, u8	powerlevel)
 {
 	u32	TxAGC=0;
 	struct r8192_priv *priv = ieee80211_priv(dev);
-	//modified by vivi, 20080109
 	TxAGC = powerlevel;
 
 	if(priv->bDynamicTxLowPower == TRUE ) //cosa 05/22/2008 for scan
@@ -295,7 +294,7 @@ void PHY_SetRF8256OFDMTxPower(struct net_device* dev, u8 powerlevel)
 			priv->Pwr_Track = writeVal_tmp;
 		}
 
-		if(priv->bDynamicTxHighPower == TRUE)     //Add by Jacken 2008/03/06
+		if(priv->bDynamicTxHighPower == TRUE)
 		{
 			// Emily, 20080613. Set low tx power for both MCS and legacy OFDM
 			writeVal = 0x03030303;

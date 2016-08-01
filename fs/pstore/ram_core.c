@@ -58,7 +58,7 @@ static size_t buffer_start_add_atomic(struct persistent_ram_zone *prz, size_t a)
 			new -= prz->buffer_size;
 	} while (atomic_cmpxchg(&prz->buffer->start, old, new) != old);
 
-	return old;
+	return old;/* [false alarm]: linux original code*/
 }
 
 /* increase the size counter until it hits the max size */
@@ -97,7 +97,7 @@ static size_t buffer_start_add_locked(struct persistent_ram_zone *prz, size_t a)
 
 	raw_spin_unlock_irqrestore(&buffer_lock, flags);
 
-	return old;
+	return old;/* [false alarm]: linux original code*/
 }
 
 /* increase the size counter until it hits the max size */
@@ -389,9 +389,11 @@ static void *persistent_ram_vmap(phys_addr_t start, size_t size,
 	pgprot_t prot;
 	unsigned int i;
 	void *vaddr;
+	unsigned long offset;
 
-	page_start = start - offset_in_page(start);
-	page_count = DIV_ROUND_UP(size + offset_in_page(start), PAGE_SIZE);
+	offset = offset_in_page(start);
+	page_start = start - offset;
+	page_count = DIV_ROUND_UP(size + offset, PAGE_SIZE);
 
 	if (memtype)
 		prot = pgprot_noncached(PAGE_KERNEL);
@@ -412,7 +414,7 @@ static void *persistent_ram_vmap(phys_addr_t start, size_t size,
 	vaddr = vmap(pages, page_count, VM_MAP, prot);
 	kfree(pages);
 
-	return vaddr;
+	return vaddr + offset;
 }
 
 static void *persistent_ram_iomap(phys_addr_t start, size_t size,

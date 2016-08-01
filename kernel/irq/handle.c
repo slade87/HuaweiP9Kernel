@@ -135,8 +135,15 @@ handle_irq_event_percpu(struct irq_desc *desc, struct irqaction *action)
 	irqreturn_t retval = IRQ_NONE;
 	unsigned int flags = 0, irq = desc->irq_data.irq;
 
-	do {
+	while (action) {
 		irqreturn_t res;
+
+		if(!action->handler) {
+			printk(KERN_WARNING "IRQ %d device %s get event "
+				"but no action handle function available.", irq, action->name);
+			action = action->next;
+			continue;
+		}
 
 		trace_irq_handler_entry(irq, action);
 		res = action->handler(irq, action->dev_id);
@@ -170,7 +177,7 @@ handle_irq_event_percpu(struct irq_desc *desc, struct irqaction *action)
 
 		retval |= res;
 		action = action->next;
-	} while (action);
+    }
 
 	add_interrupt_randomness(irq, flags);
 

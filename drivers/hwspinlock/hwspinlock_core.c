@@ -106,7 +106,7 @@ int __hwspin_trylock(struct hwspinlock *hwlock, int mode, unsigned long *flags)
 	 *    'scheduling while atomic' etc.)
 	 */
 	if (mode == HWLOCK_IRQSTATE)
-		ret = spin_trylock_irqsave(&hwlock->lock, *flags);
+		ret = spin_trylock_irqsave(&hwlock->lock, *flags);/*lint !e666*/
 	else if (mode == HWLOCK_IRQ)
 		ret = spin_trylock_irq(&hwlock->lock);
 	else
@@ -539,6 +539,24 @@ out:
 	return hwlock;
 }
 EXPORT_SYMBOL_GPL(hwspin_lock_request_specific);
+
+#ifdef CONFIG_HWSPINLOCK_HISI_DEBUG
+struct hwspinlock *hwspin_lock_lookup(unsigned int id)
+{
+	struct hwspinlock *hwlock;
+
+	mutex_lock(&hwspinlock_tree_lock);
+
+	hwlock = radix_tree_lookup(&hwspinlock_tree, id);
+	if (!hwlock)
+		pr_warn("hwspinlock %u does not exist\n", id);
+
+	mutex_unlock(&hwspinlock_tree_lock);
+
+	return hwlock;
+}
+EXPORT_SYMBOL_GPL(hwspin_lock_lookup);
+#endif
 
 /**
  * hwspin_lock_free() - free a specific hwspinlock

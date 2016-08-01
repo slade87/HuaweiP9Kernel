@@ -57,6 +57,8 @@ void rproc_remove_virtio_dev(struct rproc_vdev *rvdev);
 void rproc_remove_trace_file(struct dentry *tfile);
 struct dentry *rproc_create_trace_file(const char *name, struct rproc *rproc,
 					struct rproc_mem_entry *trace);
+struct dentry *rproc_create_cda_file(const char *name, struct rproc *rproc,
+					struct rproc_mem_entry *cda);
 void rproc_delete_debug_dir(struct rproc *rproc);
 void rproc_create_debug_dir(struct rproc *rproc);
 void rproc_init_debugfs(void);
@@ -114,6 +116,9 @@ struct resource_table *rproc_find_loaded_rsc_table(struct rproc *rproc,
 
         return NULL;
 }
+
+int rproc_elf_seg_reload(struct rproc *rproc, const struct firmware *fw, int loadall);
+int set_plat_parameters(void);
 
 extern const struct rproc_fw_ops rproc_elf_fw_ops;
 

@@ -1,20 +1,4 @@
-/*
- * Copyright (c) 2000-2006 Silicon Graphics, Inc.
- * All Rights Reserved.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it would be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write the Free Software Foundation,
- * Inc.,  51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- */
+
 #include <linux/log2.h>
 
 #include "xfs.h"
@@ -1439,27 +1423,7 @@ xfs_ialloc(
 	return 0;
 }
 
-/*
- * Free up the underlying blocks past new_size.  The new size must be smaller
- * than the current size.  This routine can be used both for the attribute and
- * data fork, and does not modify the inode size, which is left to the caller.
- *
- * The transaction passed to this routine must have made a permanent log
- * reservation of at least XFS_ITRUNCATE_LOG_RES.  This routine may commit the
- * given transaction and start new ones, so make sure everything involved in
- * the transaction is tidy before calling here.  Some transaction will be
- * returned to the caller to be committed.  The incoming transaction must
- * already include the inode, and both inode locks must be held exclusively.
- * The inode must also be "held" within the transaction.  On return the inode
- * will be "held" within the returned transaction.  This routine does NOT
- * require any disk space to be reserved for it within the transaction.
- *
- * If we get an error, we must return with the inode locked and linked into the
- * current transaction. This keeps things simple for the higher level code,
- * because it always knows that the inode is locked and held in the transaction
- * that returns to it whether errors occur or not.  We don't mark the inode
- * dirty on error so that transactions can be easily aborted if possible.
- */
+
 int
 xfs_itruncate_extents(
 	struct xfs_trans	**tpp,
@@ -3205,12 +3169,7 @@ xfs_iext_add_indirect_multi(
 		memset(&erp->er_extbuf[idx], 0, byte_diff);
 	}
 
-	/*
-	 * Add the new extents to the end of the target
-	 * list, then allocate new irec record(s) and
-	 * extent buffer(s) as needed to store the rest
-	 * of the new extents.
-	 */
+	
 	ext_cnt = count;
 	ext_diff = MIN(ext_cnt, (int)XFS_LINEAR_EXTS - erp->er_extcount);
 	if (ext_diff) {
@@ -4007,13 +3966,7 @@ xfs_iext_irec_compact_pages(
 	}
 }
 
-/*
- * This is called to update the er_extoff field in the indirection
- * array when extents have been added or removed from one of the
- * extent lists. erp_idx contains the irec index to begin updating
- * at and ext_diff contains the number of extents that were added
- * or removed.
- */
+
 void
 xfs_iext_irec_update_extoffs(
 	xfs_ifork_t	*ifp,		/* inode fork pointer */

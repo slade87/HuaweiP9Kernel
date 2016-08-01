@@ -226,8 +226,10 @@ void cpuidle_pause(void)
 }
 
 /* Currently used in suspend/resume path to resume cpuidle */
+
 void cpuidle_resume(void)
 {
+
 	mutex_lock(&cpuidle_lock);
 	cpuidle_install_idle_handler();
 	mutex_unlock(&cpuidle_lock);
@@ -469,7 +471,11 @@ void cpuidle_unregister(struct cpuidle_driver *drv)
 	int cpu;
 	struct cpuidle_device *device;
 
+#ifdef CONFIG_CPU_IDLE_MULTIPLE_DRIVERS
+	for_each_cpu(cpu, drv->cpumask) {
+#else
 	for_each_possible_cpu(cpu) {
+#endif
 		device = &per_cpu(cpuidle_dev, cpu);
 		cpuidle_unregister_device(device);
 	}
@@ -500,8 +506,11 @@ int cpuidle_register(struct cpuidle_driver *drv,
 		pr_err("failed to register cpuidle driver\n");
 		return ret;
 	}
-
+#ifdef CONFIG_CPU_IDLE_MULTIPLE_DRIVERS
+	for_each_cpu(cpu, drv->cpumask) {
+#else
 	for_each_possible_cpu(cpu) {
+#endif
 		device = &per_cpu(cpuidle_dev, cpu);
 		device->cpu = cpu;
 

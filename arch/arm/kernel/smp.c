@@ -46,6 +46,9 @@
 #include <asm/virt.h>
 #include <asm/mach/arch.h>
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/arm-ipi.h>
+
 /*
  * as from 2.5, kernels no longer have an init_tasks structure
  * so we need some other way of telling a new secondary core
@@ -53,11 +56,15 @@
  */
 struct secondary_data secondary_data;
 
+#ifdef CONFIG_SECURE_EXTENSION
+static ipi_secure_notify_handler *secure_notify_handler = NULL;
+#endif
+
 /*
  * control for which core is the next to come out of the secondary
  * boot "holding pen"
  */
-volatile int __cpuinitdata pen_release = -1;
+volatile int pen_release = -1;
 
 enum ipi_msg_type {
 	IPI_WAKEUP,
@@ -66,6 +73,11 @@ enum ipi_msg_type {
 	IPI_CALL_FUNC,
 	IPI_CALL_FUNC_SINGLE,
 	IPI_CPU_STOP,
+	IPI_COMPLETION,
+	IPI_CPU_BACKTRACE,
+#ifdef CONFIG_SECURE_EXTENSION
+        IPI_NOTIFY_FUNC,
+#endif
 };
 
 static DECLARE_COMPLETION(cpu_running);
@@ -87,8 +99,8 @@ int __cpuinit __cpu_up(unsigned int cpu, struct task_struct *idle)
 	 * its stack and the page tables.
 	 */
 	secondary_data.stack = task_stack_page(idle) + THREAD_START_SP;
-	secondary_data.pgdir = virt_to_phys(idmap_pgd);
-	secondary_data.swapper_pg_dir = virt_to_phys(swapper_pg_dir);
+	secondary_data.pgdir = virt_to_idmap(idmap_pgd);
+	secondary_data.swapper_pg_dir = virt_to_idmap(swapper_pg_dir);
 	__cpuc_flush_dcache_area(&secondary_data, sizeof(secondary_data));
 	outer_clean_range(__pa(&secondary_data), __pa(&secondary_data + 1));
 
@@ -463,6 +475,11 @@ static const char *ipi_types[NR_IPI] = {
 	S(IPI_CALL_FUNC, "Function call interrupts"),
 	S(IPI_CALL_FUNC_SINGLE, "Single function call interrupts"),
 	S(IPI_CPU_STOP, "CPU stop interrupts"),
+	S(IPI_COMPLETION, "completion interrupts"),
+	S(IPI_CPU_BACKTRACE, "CPU backtrace"),
+#ifdef CONFIG_SECURE_EXTENSION
+    S(IPI_NOTIFY_FUNC, "Secure kernel notification"),
+#endif
 };
 
 void show_ipi_list(struct seq_file *p, int prec)
@@ -575,7 +592,7 @@ static void ipi_cpu_stop(unsigned int cpu)
 	    system_state == SYSTEM_RUNNING) {
 		raw_spin_lock(&stop_lock);
 		printk(KERN_CRIT "CPU%u: stopping\n", cpu);
-		dump_stack();
+		/*dump_stack();*/
 		raw_spin_unlock(&stop_lock);
 	}
 
@@ -586,6 +603,71 @@ static void ipi_cpu_stop(unsigned int cpu)
 
 	while (1)
 		cpu_relax();
+}
+
+static DEFINE_PER_CPU(struct completion *, cpu_completion);
+
+int register_ipi_completion(struct completion *completion, int cpu)
+{
+	per_cpu(cpu_completion, cpu) = completion;
+	return IPI_COMPLETION;
+}
+
+static void ipi_complete(unsigned int cpu)
+{
+	complete(per_cpu(cpu_completion, cpu));
+}
+
+static cpumask_t backtrace_mask;
+static DEFINE_RAW_SPINLOCK(backtrace_lock);
+
+/* "in progress" flag of arch_trigger_all_cpu_backtrace */
+static unsigned long backtrace_flag;
+
+void smp_send_all_cpu_backtrace(void)
+{
+	unsigned int this_cpu = smp_processor_id();
+	int i;
+
+	if (test_and_set_bit(0, &backtrace_flag))
+		/*
+		 * If there is already a trigger_all_cpu_backtrace() in progress
+		 * (backtrace_flag == 1), don't output double cpu dump infos.
+		 */
+		return;
+
+	cpumask_copy(&backtrace_mask, cpu_online_mask);
+	cpu_clear(this_cpu, backtrace_mask);
+
+	pr_info("Backtrace for cpu %d (current):\n", this_cpu);
+	dump_stack();
+
+	pr_info("\nsending IPI to all other CPUs:\n");
+	smp_cross_call(&backtrace_mask, IPI_CPU_BACKTRACE);
+
+	/* Wait for up to 10 seconds for all other CPUs to do the backtrace */
+	for (i = 0; i < 10 * 1000; i++) {
+		if (cpumask_empty(&backtrace_mask))
+			break;
+		mdelay(1);
+	}
+
+	clear_bit(0, &backtrace_flag);
+	smp_mb__after_clear_bit();
+}
+
+/*
+ * ipi_cpu_backtrace - handle IPI from smp_send_all_cpu_backtrace()
+ */
+static void ipi_cpu_backtrace(unsigned int cpu, struct pt_regs *regs)
+{
+	if (cpu_isset(cpu, backtrace_mask)) {
+		raw_spin_lock(&backtrace_lock);
+		pr_warning("IPI backtrace for cpu %d\n", cpu);
+		show_regs(regs);
+		raw_spin_unlock(&backtrace_lock);
+		cpu_clear(cpu, backtrace_mask);
+	}
 }
 
 /*
@@ -604,6 +686,7 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 	if (ipinr < NR_IPI)
 		__inc_irq_stat(cpu, ipi_irqs[ipinr]);
 
+	trace_arm_ipi_entry(ipinr);
 	switch (ipinr) {
 	case IPI_WAKEUP:
 		break;
@@ -638,11 +721,29 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 		irq_exit();
 		break;
 
+	case IPI_COMPLETION:
+		irq_enter();
+		ipi_complete(cpu);
+		irq_exit();
+		break;
+
+	case IPI_CPU_BACKTRACE:
+		ipi_cpu_backtrace(cpu, regs);
+		break;
+#ifdef CONFIG_SECURE_EXTENSION
+           case IPI_NOTIFY_FUNC:
+                printk("come into ipi notify handler\n");
+                if(secure_notify_handler)
+                secure_notify_handler(regs);
+                break;
+#endif
+
 	default:
 		printk(KERN_CRIT "CPU%u: Unknown IPI message 0x%x\n",
 		       cpu, ipinr);
 		break;
 	}
+	trace_arm_ipi_exit(ipinr);
 	set_irq_regs(old_regs);
 }
 
@@ -728,5 +829,23 @@ static int __init register_cpufreq_notifier(void)
 						CPUFREQ_TRANSITION_NOTIFIER);
 }
 core_initcall(register_cpufreq_notifier);
+#endif
+
+#ifdef CONFIG_SECURE_EXTENSION
+int register_secure_notify_handler(ipi_secure_notify_handler handler)
+{
+        secure_notify_handler = handler;
+            return 0;
+}
+
+int unregister_secure_notify_handler(void)
+{
+        secure_notify_handler = NULL;
+            return 0;
+}
+
+
+EXPORT_SYMBOL(register_secure_notify_handler);
+EXPORT_SYMBOL(unregister_secure_notify_handler);
 
 #endif

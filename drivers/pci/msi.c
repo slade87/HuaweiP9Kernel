@@ -37,10 +37,183 @@ int arch_msi_check_device(struct pci_dev *dev, int nvec, int type)
 }
 #endif
 
+#if defined(CONFIG_MBI)
+static void pci_write_mbi_msg(struct mbi_desc *desc, struct mbi_msg *msg, bool enable)
+{
+	struct msi_desc *entry = desc->data;
+
+	__pci_write_msi_msg(entry, (struct msi_msg *) msg);
+}
+
+static void msi_set_mask_bit(struct irq_data *data, u32 flag);
+
+static void pci_mask_mbi_irq(struct mbi_desc *desc)
+{
+	msi_set_mask_bit(irq_get_irq_data(desc->irq), 1);
+}
+
+static void pci_unmask_mbi_irq(struct mbi_desc *desc)
+{
+	msi_set_mask_bit(irq_get_irq_data(desc->irq), 0);
+}
+
+static struct mbi_ops pci_mbi_ops = {
+	.write_msg	= pci_write_mbi_msg,
+	.mask_irq	= pci_mask_mbi_irq,
+	.unmask_irq	= pci_unmask_mbi_irq,
+};
+
+static struct irq_domain *pci_msi_get_domain(struct pci_dev *dev)
+{
+	if (dev->bus->msi)
+		return dev->bus->msi->domain;
+
+	return NULL;
+}
+
+static int pci_msi_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
+{
+	struct irq_domain *domain = pci_msi_get_domain(pdev);
+	struct device *dev = &pdev->dev;
+	int request_id = PCI_DEVID(pdev->bus->number, pdev->devfn);
+	struct msi_desc *entry;
+	struct mbi_desc *desc;
+	int i, ret, ofst = 0;
+
+	if (!domain)
+		return arch_setup_msi_irqs(pdev, nvec, type);
+
+	list_for_each_entry(entry, &pdev->msi_list, list) {
+		desc = mbi_alloc_desc(dev, &pci_mbi_ops, request_id,
+				      nvec, ofst, entry);
+		if (!desc)
+			return -ENOMEM;
+		ret = irq_domain_alloc_irqs(domain, entry->nvec_used,
+					    dev_to_node(dev), desc);
+		if (ret < 0)
+			return ret;
+		for (i = 0; i < entry->nvec_used; i++)
+			irq_set_msi_desc_off(ret, i, entry);
+		desc = NULL;
+		ofst++;
+	}
+
+	return 0;
+}
+
+static void pci_msi_teardown_msi_irqs(struct pci_dev *pdev)
+{
+	struct irq_domain *domain = pci_msi_get_domain(pdev);
+
+	if (domain) {
+		struct msi_desc *entry;
+		list_for_each_entry(entry, &pdev->msi_list, list) {
+			if (entry->irq) {
+				irq_domain_free_irqs(entry->irq, entry->nvec_used);
+				entry->irq = 0;
+			}
+		}
+	} else {
+		arch_teardown_msi_irqs(pdev);
+	}
+}
+#elif defined(CONFIG_PCI_MSI_IRQ_DOMAIN)
+static struct irq_domain *pci_msi_default_domain;
+static DEFINE_MUTEX(pci_msi_domain_lock);
+
+struct irq_domain * __weak arch_get_pci_msi_domain(struct pci_dev *dev)
+{
+	return pci_msi_default_domain;
+}
+
+static struct irq_domain *pci_msi_get_domain(struct pci_dev *dev)
+{
+	struct irq_domain *domain = NULL;
+
+	if (dev->bus->msi)
+		domain = dev->bus->msi->domain;
+	if (!domain)
+		domain = arch_get_pci_msi_domain(dev);
+
+	return domain;
+}
+
+static int pci_msi_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
+{
+	struct irq_domain *domain;
+
+	domain = pci_msi_get_domain(dev);
+	if (domain)
+		return pci_msi_domain_alloc_irqs(domain, dev, nvec, type);
+
+	return arch_setup_msi_irqs(dev, nvec, type);
+}
+
+static void pci_msi_teardown_msi_irqs(struct pci_dev *dev)
+{
+	struct irq_domain *domain;
+
+	domain = pci_msi_get_domain(dev);
+	if (domain)
+		pci_msi_domain_free_irqs(domain, dev);
+	else
+		arch_teardown_msi_irqs(dev);
+}
+#else
+#define pci_msi_setup_msi_irqs		arch_setup_msi_irqs
+#define pci_msi_teardown_msi_irqs	arch_teardown_msi_irqs
+#endif
+
+
 #ifndef arch_setup_msi_irqs
 # define arch_setup_msi_irqs default_setup_msi_irqs
 # define HAVE_DEFAULT_MSI_SETUP_IRQS
 #endif
+
+/* Arch hooks */
+
+struct msi_controller * __weak pcibios_msi_controller(struct pci_dev *dev)
+{
+	return NULL;
+}
+
+static struct msi_controller *pci_msi_controller(struct pci_dev *dev)
+{
+	struct msi_controller *msi_ctrl = dev->bus->msi;
+
+	if (msi_ctrl)
+		return msi_ctrl;
+
+	return pcibios_msi_controller(dev);
+}
+
+int __weak arch_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
+{
+	struct msi_controller *chip = pci_msi_controller(dev);
+	int err;
+
+	if (!chip || !chip->setup_irq)
+		return -EINVAL;
+
+	err = chip->setup_irq(chip, dev, desc);
+	if (err < 0)
+		return err;
+
+	irq_set_chip_data(desc->irq, chip);
+
+	return 0;
+}
+
+void __weak arch_teardown_msi_irq(unsigned int irq)
+{
+	struct msi_controller *chip = irq_get_chip_data(irq);
+
+	if (!chip || !chip->teardown_irq)
+		return;
+
+	chip->teardown_irq(chip, irq);
+}
+
 
 #ifdef HAVE_DEFAULT_MSI_SETUP_IRQS
 int default_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)

@@ -71,6 +71,7 @@ obj-$(CONFIG_SENSORS_IBMPEX)	+= ibmpex.o
 obj-$(CONFIG_SENSORS_IIO_HWMON) += iio_hwmon.o
 obj-$(CONFIG_SENSORS_INA209)	+= ina209.o
 obj-$(CONFIG_SENSORS_INA2XX)	+= ina2xx.o
+obj-$(CONFIG_SENSORS_INA231)	+= ina231.o
 obj-$(CONFIG_SENSORS_IT87)	+= it87.o
 obj-$(CONFIG_SENSORS_JC42)	+= jc42.o
 obj-$(CONFIG_SENSORS_JZ4740)	+= jz4740-hwmon.o
@@ -145,3 +146,12 @@ obj-$(CONFIG_PMBUS)		+= pmbus/
 
 ccflags-$(CONFIG_HWMON_DEBUG_CHIP) := -DDEBUG
 
+ifdef CONFIG_HI6XXX_THERMAL
+#ccflags-y	+= -I$(srctree)/drivers/hisi/mntn/
+EXTRA_CFLAGS += -DBSP_CORE_APP
+obj-y   += hi6xxx_tempsys_device.o hi6xxx_hkadc_value.o
+obj-y   += hi6xxx_tsensor_driver.o
+obj-y   += hi6xxx_tsensor_governor.o
+obj-y   += hi6xxx_hkadc_ctrl.o
+obj-y   += hi6xxx_hkadc_debug_device.o
+endif

@@ -484,7 +484,8 @@ static const struct file_operations tty_fops = {
 static const struct file_operations console_fops = {
 	.llseek		= no_llseek,
 	.read		= tty_read,
-	.write		= redirected_tty_write,
+	/*.write		= redirected_tty_write,*/
+	.write		= tty_write,    /* added by hisi-balong*/
 	.poll		= tty_poll,
 	.unlocked_ioctl	= tty_ioctl,
 	.compat_ioctl	= tty_compat_ioctl,
@@ -1195,7 +1196,28 @@ static ssize_t tty_write(struct file *file, const char __user *buf,
 {
 	struct tty_struct *tty = file_tty(file);
  	struct tty_ldisc *ld;
+ 	struct file *p = NULL;
 	ssize_t ret;
+
+    /* added by hisi-balong*/
+	/*
+     * add for usb ashell, in case it's console file
+	 */
+    if (file->f_op == &console_fops) {
+    	spin_lock(&redirect_lock);
+    	if (redirect) {
+    		get_file(redirect);
+    		p = redirect;
+    	}
+    	spin_unlock(&redirect_lock);
+
+    	if (p) {
+    		ssize_t res;
+    		res = vfs_write(p, buf, count, &p->f_pos);
+    		fput(p);
+    		return res;
+    	}
+    }
 
 	if (tty_paranoia_check(tty, file_inode(file), "tty_write"))
 		return -EIO;

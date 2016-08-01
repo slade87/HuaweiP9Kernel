@@ -887,10 +887,7 @@ int nfs_show_stats(struct seq_file *m, struct dentry *root)
 }
 EXPORT_SYMBOL_GPL(nfs_show_stats);
 
-/*
- * Begin unmount by attempting to remove all automounted mountpoints we added
- * in response to xdev traversals and referrals
- */
+
 void nfs_umount_begin(struct super_block *sb)
 {
 	struct nfs_server *server;
@@ -2132,6 +2129,8 @@ nfs_remount(struct super_block *sb, int *flags, char *raw_data)
 	struct nfs_mount_data *options = (struct nfs_mount_data *)raw_data;
 	struct nfs4_mount_data *options4 = (struct nfs4_mount_data *)raw_data;
 	u32 nfsvers = nfss->nfs_client->rpc_ops->version;
+
+	sync_filesystem(sb);
 
 	/*
 	 * Userspace mount programs that send binary options generally send

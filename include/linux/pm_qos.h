@@ -15,6 +15,10 @@ enum {
 	PM_QOS_CPU_DMA_LATENCY,
 	PM_QOS_NETWORK_LATENCY,
 	PM_QOS_NETWORK_THROUGHPUT,
+	PM_QOS_MEMORY_THROUGHPUT,
+	PM_QOS_MEMORY_THROUGHPUT_UP_THRESHOLD,
+	PM_QOS_BUSLOW_MINFREQ,
+	PM_QOS_BUS_MINFREQ,
 
 	/* insert new class ID */
 	PM_QOS_NUM_CLASSES,
@@ -27,12 +31,29 @@ enum pm_qos_flags_status {
 	PM_QOS_FLAGS_ALL,
 };
 
+
+
+enum  {
+    IPC_QOS = 1,   /*IPC信号量有32票，占用32个投票值, 1-32*/
+    I2C_QOS  = 40, /*I2C 0-5, 40-45*/
+    MMC_QOS = 50, /*MMC 0-2, 50-52*/
+    USB_QOS = 60,
+    IDLE_QOS,
+};
+
+
 #define PM_QOS_DEFAULT_VALUE -1
+#define PM_QOS_PWRCTRL_DFS_DEFAULT_VALUE    (0)
 
 #define PM_QOS_CPU_DMA_LAT_DEFAULT_VALUE	(2000 * USEC_PER_SEC)
 #define PM_QOS_NETWORK_LAT_DEFAULT_VALUE	(2000 * USEC_PER_SEC)
 #define PM_QOS_NETWORK_THROUGHPUT_DEFAULT_VALUE	0
+#define PM_QOS_MEMORY_THROUGHPUT_DEFAULT_VALUE	0
+#define PM_QOS_MEMORY_THROUGHPUT_UP_THRESHOLD_DEFAULT_VALUE	8000
 #define PM_QOS_DEV_LAT_DEFAULT_VALUE		0
+#define QOS_BUSLOW_MINPROFILE_DEFAULT_VALUE  (0)
+#define QOS_BUS_MINPROFILE_DEFAULT_VALUE  (0)
+
 
 #define PM_QOS_FLAG_NO_POWER_OFF	(1 << 0)
 #define PM_QOS_FLAG_REMOTE_WAKEUP	(1 << 1)
@@ -65,7 +86,8 @@ struct dev_pm_qos_request {
 enum pm_qos_type {
 	PM_QOS_UNITIALIZED,
 	PM_QOS_MAX,		/* return the largest value */
-	PM_QOS_MIN		/* return the smallest value */
+	PM_QOS_MIN,		/* return the smallest value */
+	PM_QOS_SUM
 };
 
 /*

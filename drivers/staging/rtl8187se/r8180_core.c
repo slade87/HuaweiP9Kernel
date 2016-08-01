@@ -1,31 +1,4 @@
-/*
-   This is part of rtl818x pci OpenSource driver - v 0.1
-   Copyright (C) Andrea Merello 2004-2005  <andreamrl@tiscali.it>
-   Released under the terms of GPL (General Public License)
 
-   Parts of this driver are based on the GPL part of the official
-   Realtek driver.
-
-   Parts of this driver are based on the rtl8180 driver skeleton
-   from Patric Schenke & Andres Salomon.
-
-   Parts of this driver are based on the Intel Pro Wireless 2100 GPL driver.
-
-   Parts of BB/RF code are derived from David Young rtl8180 netbsd driver.
-
-   RSSI calc function from 'The Deuce'
-
-   Some ideas borrowed from the 8139too.c driver included in linux kernel.
-
-   We (I?) want to thanks the Authors of those projecs and also the
-   Ndiswrapper's project Authors.
-
-   A big big thanks goes also to Realtek corp. for their help in my attempt to
-   add RTL8185 and RTL8225 support, and to David Young also.
-
-   Power management interface routines.
-   Written by Mariusz Matuszek.
-*/
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
@@ -1767,7 +1740,6 @@ short rtl8180_tx(struct net_device *dev, u8 *txbuf, int len, int priority,
 		} else { /* Unicast packet */
 			u16 AckTime;
 
-			/* YJ,add,080828,for Keep alive */
 			priv->NumTxUnicast++;
 
 			/* Figure out ACK rate according to BSS basic rate
@@ -2234,14 +2206,13 @@ static CHANNEL_LIST ChannelPlan[] = {
 	{{1,2,3,4,5,6,7,8,9,10,11,12,13,36,40,44,48,52,56,60,64},21},	/* Israel. */
 	{{1,2,3,4,5,6,7,8,9,10,11,12,13,34,38,42,46},17},		/* For 11a , TELEC */
 	{{1,2,3,4,5,6,7,8,9,10,11,12,13,14},14},  /* For Global Domain. 1-11:active scan, 12-14 passive scan. //+YJ, 080626 */
-	{{1,2,3,4,5,6,7,8,9,10,11,12,13},13} /* world wide 13: ch1~ch11 active scan, ch12~13 passive //lzm add 080826 */
+	{{1,2,3,4,5,6,7,8,9,10,11,12,13},13}
 };
 
 static void rtl8180_set_channel_map(u8 channel_plan, struct ieee80211_device *ieee)
 {
 	int i;
 
-	/* lzm add 080826 */
 	ieee->MinPassiveChnlNum = MAX_CHANNEL_NUMBER+1;
 	ieee->IbssStartChnl = 0;
 
@@ -2276,7 +2247,7 @@ static void rtl8180_set_channel_map(u8 channel_plan, struct ieee80211_device *ie
 			ieee->bGlobalDomain = true;
 			break;
 		}
-	case COUNTRY_CODE_WORLD_WIDE_13_INDEX:/* lzm add 080826 */
+	case COUNTRY_CODE_WORLD_WIDE_13_INDEX:
 		{
 			ieee->MinPassiveChnlNum = 12;
 			ieee->IbssStartChnl = 10;
@@ -2296,7 +2267,6 @@ static void rtl8180_set_channel_map(u8 channel_plan, struct ieee80211_device *ie
 
 void GPIOChangeRFWorkItemCallBack(struct work_struct *work);
 
-/* YJ,add,080828 */
 static void rtl8180_statistics_init(struct Stats *pstats)
 {
 	memset(pstats, 0, sizeof(struct Stats));
@@ -2308,7 +2278,6 @@ static void rtl8180_link_detect_init(plink_detect_t plink_detect)
 	plink_detect->SlotNum = DEFAULT_SLOT_NUM;
 }
 
-/* YJ,add,080828,end */
 static void rtl8187se_eeprom_register_read(struct eeprom_93cx6 *eeprom)
 {
 	struct net_device *dev = eeprom->data;
@@ -2410,7 +2379,7 @@ short rtl8180_init(struct net_device *dev)
 	priv->eRFPowerState = eRfOff;
 	priv->RfOffReason = 0;
 	priv->LedStrategy = SW_LED_MODE0;
-	priv->TxPollingTimes = 0; /* lzm add 080826 */
+	priv->TxPollingTimes = 0;
 	priv->bLeisurePs = true;
 	priv->dot11PowerSaveMode = eActive;
 	priv->AdMinCheckPeriod = 5;
@@ -2925,7 +2894,6 @@ void rtl8180_watch_dog(struct net_device *dev)
 		    (priv->eRFPowerState == eRfOn))
 			IPSEnter(dev);
 	}
-	/* YJ,add,080828,for link state check */
 	if ((priv->ieee80211->state == IEEE80211_LINKED) && (priv->ieee80211->iw_mode == IW_MODE_INFRA)) {
 		SlotIndex = (priv->link_detect.SlotIndex++) % priv->link_detect.SlotNum;
 		priv->link_detect.RxFrameNum[SlotIndex] = priv->ieee80211->NumRxDataInPeriod + priv->ieee80211->NumRxBcnInPeriod;
@@ -2938,10 +2906,8 @@ void rtl8180_watch_dog(struct net_device *dev)
 		}
 	}
 
-	/* YJ,add,080828,for KeepAlive */
 	MgntLinkKeepAlive(priv);
 
-	/* YJ,add,080828,for LPS */
 	LeisurePSLeave(priv);
 
 	if (priv->ieee80211->state == IEEE80211_LINKED) {
@@ -3597,7 +3563,7 @@ irqreturn_t rtl8180_interrupt(int irq, void *netdev, struct pt_regs *regs)
 	}
 
 	if (inta & ISR_THPDOK) { /* High priority tx ok */
-		priv->link_detect.NumTxOkInPeriod++; /* YJ,add,080828 */
+		priv->link_detect.NumTxOkInPeriod++;
 		priv->stats.txhpokint++;
 		rtl8180_tx_isr(dev, HI_PRIORITY, 0);
 	}
@@ -3660,14 +3626,14 @@ irqreturn_t rtl8180_interrupt(int irq, void *netdev, struct pt_regs *regs)
 		priv->stats.txoverflow++;
 
 	if (inta & ISR_TNPDOK) { /* Normal priority tx ok */
-		priv->link_detect.NumTxOkInPeriod++; /* YJ,add,080828 */
+		priv->link_detect.NumTxOkInPeriod++;
 		priv->stats.txnpokint++;
 		rtl8180_tx_isr(dev, NORM_PRIORITY, 0);
 		rtl8180_try_wake_queue(dev, NORM_PRIORITY);
 	}
 
 	if (inta & ISR_TLPDOK) { /* Low priority tx ok */
-		priv->link_detect.NumTxOkInPeriod++; /* YJ,add,080828 */
+		priv->link_detect.NumTxOkInPeriod++;
 		priv->stats.txlpokint++;
 		rtl8180_tx_isr(dev, LOW_PRIORITY, 0);
 		rtl8180_try_wake_queue(dev, LOW_PRIORITY);
@@ -3675,14 +3641,14 @@ irqreturn_t rtl8180_interrupt(int irq, void *netdev, struct pt_regs *regs)
 
 	if (inta & ISR_TBKDOK) { /* corresponding to BK_PRIORITY */
 		priv->stats.txbkpokint++;
-		priv->link_detect.NumTxOkInPeriod++; /* YJ,add,080828 */
+		priv->link_detect.NumTxOkInPeriod++;
 		rtl8180_tx_isr(dev, BK_PRIORITY, 0);
 		rtl8180_try_wake_queue(dev, BE_PRIORITY);
 	}
 
 	if (inta & ISR_TBEDOK) { /* corresponding to BE_PRIORITY */
 		priv->stats.txbeperr++;
-		priv->link_detect.NumTxOkInPeriod++; /* YJ,add,080828 */
+		priv->link_detect.NumTxOkInPeriod++;
 		rtl8180_tx_isr(dev, BE_PRIORITY, 0);
 		rtl8180_try_wake_queue(dev, BE_PRIORITY);
 	}

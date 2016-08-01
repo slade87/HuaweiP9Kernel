@@ -39,6 +39,13 @@ config HWMON_DEBUG_CHIP
 
 comment "Native drivers"
 
+config SENSORS_INA231
+	tristate "POWER Monitoring Chip debugging"
+	depends on I2C
+	help
+	  If you say yes here you get support for the Devices
+	  Ina231 power monitoring chip.
+
 config SENSORS_AB8500
 	tristate "AB8500 thermal monitoring"
 	depends on AB8500_GPADC && AB8500_BM
@@ -1557,3 +1564,9 @@ config SENSORS_ATK0110
 endif # ACPI
 
 endif # HWMON
+
+config HI6XXX_THERMAL
+	bool "Thermal Drivers"
+	default n
+	help
+	  Uses for hi6xxx SoC.

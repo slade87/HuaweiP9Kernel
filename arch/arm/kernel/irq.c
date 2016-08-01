@@ -1,26 +1,4 @@
-/*
- *  linux/arch/arm/kernel/irq.c
- *
- *  Copyright (C) 1992 Linus Torvalds
- *  Modifications for ARM processor Copyright (C) 1995-2000 Russell King.
- *
- *  Support for Dynamic Tick Timer Copyright (C) 2004-2005 Nokia Corporation.
- *  Dynamic Tick Timer written by Tony Lindgren <tony@atomide.com> and
- *  Tuukka Tikkanen <tuukka.tikkanen@elektrobit.com>.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- *  This file contains the code used by various IRQ handling routines:
- *  asking for different IRQ's should be done through these routines
- *  instead of just grabbing them. Thus setups with different IRQ numbers
- *  shouldn't result in any weird surprises, and installing new handlers
- *  should be easier.
- *
- *  IRQ's are in fact implemented a bit like signal handlers for the kernel.
- *  Naturally it's not a 1:1 relation, but there are similarities.
- */
+
 #include <linux/kernel_stat.h>
 #include <linux/signal.h>
 #include <linux/ioport.h>
@@ -41,6 +19,27 @@
 #include <asm/mach/arch.h>
 #include <asm/mach/irq.h>
 #include <asm/mach/time.h>
+
+
+
+
+
+static unsigned int curr_int_num = 0xffffffff;
+static rdr_funcptr_3 int_switch_hook;
+static unsigned int int_switch_flag;
+
+void int_switch_hook_add(rdr_funcptr_3 p_hook_func)
+{
+	int_switch_hook = p_hook_func;
+}
+EXPORT_SYMBOL(int_switch_hook_add);
+
+void int_switch_hook_delete(void)
+{
+	int_switch_hook = NULL;
+}
+EXPORT_SYMBOL(int_switch_hook_delete);
+
 
 unsigned long irq_err_count;
 
@@ -66,6 +65,17 @@ void handle_IRQ(unsigned int irq, struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
+
+	unsigned int old_int_num = curr_int_num;
+
+	curr_int_num = irq;
+
+	if (NULL != int_switch_hook) {/*exc int hook func*/
+		int_switch_hook(0, old_int_num, curr_int_num);
+		int_switch_flag = 1;
+	}
+	
+
 	irq_enter();
 
 	/*
@@ -81,6 +91,12 @@ void handle_IRQ(unsigned int irq, struct pt_regs *regs)
 	}
 
 	irq_exit();
+
+	/*call exception interrupt hook func*/
+	if ((NULL != int_switch_hook) && (0 != int_switch_flag))
+		int_switch_hook(1, old_int_num, curr_int_num);
+
+
 	set_irq_regs(old_regs);
 }
 

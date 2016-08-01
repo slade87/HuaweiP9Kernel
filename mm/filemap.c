@@ -38,12 +38,19 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/filemap.h>
 
+
 /*
  * FIXME: remove all knowledge of the buffer layer from the core VM
  */
 #include <linux/buffer_head.h> /* for try_to_free_buffers */
 
 #include <asm/mman.h>
+
+#include<trace/iotrace.h>
+DEFINE_TRACE(generic_perform_write_enter);
+DEFINE_TRACE(generic_perform_write_end);
+DEFINE_TRACE(generic_file_read_begin);
+DEFINE_TRACE(generic_file_read_end);
 
 /*
  * Shared mappings implemented 30.11.1994. It's not fully working yet,
@@ -496,6 +503,27 @@ out:
 	return error;
 }
 EXPORT_SYMBOL(add_to_page_cache_locked);
+
+#ifdef CONFIG_ARM64
+/*
+ * Like add_to_page_cache_locked, but used to add newly allocated pages:
+ * the page is new, so we can just run __set_page_locked() against it.
+ */
+int add_to_page_cache(struct page *page,
+		struct address_space *mapping, pgoff_t offset, gfp_t gfp_mask)
+{
+	int error;
+
+	if (vm_cache_limit_mbytes && page_cache_over_limit())
+		shrink_page_cache(gfp_mask);
+	__set_page_locked(page);
+	error = add_to_page_cache_locked(page, mapping, offset, gfp_mask);
+	if (unlikely(error))
+		__clear_page_locked(page);
+	return error;
+}
+EXPORT_SYMBOL(add_to_page_cache);
+#endif
 
 int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 				pgoff_t offset, gfp_t gfp_mask)
@@ -1115,6 +1143,8 @@ static void do_generic_file_read(struct file *filp, loff_t *ppos,
 	last_index = (*ppos + desc->count + PAGE_CACHE_SIZE-1) >> PAGE_CACHE_SHIFT;
 	offset = *ppos & ~PAGE_CACHE_MASK;
 
+    trace_generic_file_read_begin(filp, desc->count);
+
 	for (;;) {
 		struct page *page;
 		pgoff_t end_index;
@@ -1305,12 +1335,15 @@ no_cached_page:
 	}
 
 out:
+    trace_generic_file_read_end(filp, desc->written);
+
 	ra->prev_pos = prev_index;
 	ra->prev_pos <<= PAGE_CACHE_SHIFT;
 	ra->prev_pos |= prev_offset;
 
 	*ppos = ((loff_t)index << PAGE_CACHE_SHIFT) + offset;
 	file_accessed(filp);
+
 }
 
 int file_read_actor(read_descriptor_t *desc, struct page *page,
@@ -2307,6 +2340,8 @@ static ssize_t generic_perform_write(struct file *file,
 	ssize_t written = 0;
 	unsigned int flags = 0;
 
+    trace_generic_perform_write_enter(file, i->count, pos);
+
 	/*
 	 * Copies from kernel address space cannot fail (NFSD is a big user).
 	 */
@@ -2385,6 +2420,8 @@ again:
 			break;
 		}
 	} while (iov_iter_count(i));
+
+    trace_generic_perform_write_end(file, written ? written : status);
 
 	return written ? written : status;
 }

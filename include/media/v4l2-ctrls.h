@@ -56,61 +56,7 @@ struct v4l2_ctrl_ops {
 
 typedef void (*v4l2_ctrl_notify_fnc)(struct v4l2_ctrl *ctrl, void *priv);
 
-/** struct v4l2_ctrl - The control structure.
-  * @node:	The list node.
-  * @ev_subs:	The list of control event subscriptions.
-  * @handler:	The handler that owns the control.
-  * @cluster:	Point to start of cluster array.
-  * @ncontrols:	Number of controls in cluster array.
-  * @done:	Internal flag: set for each processed control.
-  * @is_new:	Set when the user specified a new value for this control. It
-  *		is also set when called from v4l2_ctrl_handler_setup. Drivers
-  *		should never set this flag.
-  * @is_private: If set, then this control is private to its handler and it
-  *		will not be added to any other handlers. Drivers can set
-  *		this flag.
-  * @is_auto:   If set, then this control selects whether the other cluster
-  *		members are in 'automatic' mode or 'manual' mode. This is
-  *		used for autogain/gain type clusters. Drivers should never
-  *		set this flag directly.
-  * @has_volatiles: If set, then one or more members of the cluster are volatile.
-  *		Drivers should never touch this flag.
-  * @call_notify: If set, then call the handler's notify function whenever the
-  *		control's value changes.
-  * @manual_mode_value: If the is_auto flag is set, then this is the value
-  *		of the auto control that determines if that control is in
-  *		manual mode. So if the value of the auto control equals this
-  *		value, then the whole cluster is in manual mode. Drivers should
-  *		never set this flag directly.
-  * @ops:	The control ops.
-  * @id:	The control ID.
-  * @name:	The control name.
-  * @type:	The control type.
-  * @minimum:	The control's minimum value.
-  * @maximum:	The control's maximum value.
-  * @default_value: The control's default value.
-  * @step:	The control's step value for non-menu controls.
-  * @menu_skip_mask: The control's skip mask for menu controls. This makes it
-  *		easy to skip menu items that are not valid. If bit X is set,
-  *		then menu item X is skipped. Of course, this only works for
-  *		menus with <= 32 menu items. There are no menus that come
-  *		close to that number, so this is OK. Should we ever need more,
-  *		then this will have to be extended to a u64 or a bit array.
-  * @qmenu:	A const char * array for all menu items. Array entries that are
-  *		empty strings ("") correspond to non-existing menu items (this
-  *		is in addition to the menu_skip_mask above). The last entry
-  *		must be NULL.
-  * @flags:	The control's flags.
-  * @cur:	The control's current value.
-  * @val:	The control's new s32 value.
-  * @val64:	The control's new s64 value.
-  * @string:	The control's new string value.
-  * @priv:	The control's private pointer. For use by the driver. It is
-  *		untouched by the control framework. Note that this pointer is
-  *		not freed when the control is deleted. Should this be needed
-  *		then a new internal bitfield can be added to tell the framework
-  *		to free this pointer.
-  */
+
 struct v4l2_ctrl {
 	/* Administrative fields */
 	struct list_head node;
@@ -317,17 +263,7 @@ void v4l2_ctrl_handler_free(struct v4l2_ctrl_handler *hdl);
   */
 int v4l2_ctrl_handler_setup(struct v4l2_ctrl_handler *hdl);
 
-/** v4l2_ctrl_handler_log_status() - Log all controls owned by the handler.
-  * @hdl:	The control handler.
-  * @prefix:	The prefix to use when logging the control values. If the
-  *		prefix does not end with a space, then ": " will be added
-  *		after the prefix. If @prefix == NULL, then no prefix will be
-  *		used.
-  *
-  * For use with VIDIOC_LOG_STATUS.
-  *
-  * Does nothing if @hdl == NULL.
-  */
+
 void v4l2_ctrl_handler_log_status(struct v4l2_ctrl_handler *hdl,
 				  const char *prefix);
 

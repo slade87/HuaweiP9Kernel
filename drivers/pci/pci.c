@@ -24,6 +24,7 @@
 #include <linux/pm_runtime.h>
 #include <asm-generic/pci-bridge.h>
 #include <asm/setup.h>
+#include <asm/pgtable.h>
 #include "pci.h"
 
 const char *pci_power_names[] = {
@@ -790,6 +791,7 @@ int pci_set_power_state(struct pci_dev *dev, pci_power_t state)
 
 	return error;
 }
+EXPORT_SYMBOL(pci_set_power_state);
 
 /**
  * pci_choose_state - Choose the power state of a PCI device
@@ -1116,6 +1118,10 @@ int pci_load_and_free_saved_state(struct pci_dev *dev,
 }
 EXPORT_SYMBOL_GPL(pci_load_and_free_saved_state);
 
+int __weak pcibios_enable_device(struct pci_dev *dev, int bars)
+{
+	return pci_enable_resources(dev, bars);
+}
 static int do_pci_enable_device(struct pci_dev *dev, int bars)
 {
 	int err;
@@ -1233,7 +1239,7 @@ int pci_enable_device(struct pci_dev *dev)
 {
 	return pci_enable_device_flags(dev, IORESOURCE_MEM | IORESOURCE_IO);
 }
-
+EXPORT_SYMBOL(pci_enable_device);
 /*
  * Managed PCI resources.  This manages device on/off, intx/msi/msix
  * on/off and BAR regions.  pci_dev itself records msi/msix status, so
@@ -1315,6 +1321,7 @@ int pcim_enable_device(struct pci_dev *pdev)
 	}
 	return rc;
 }
+EXPORT_SYMBOL(pcim_enable_device);
 
 /**
  * pcim_pin_device - Pin managed PCI device
@@ -1412,7 +1419,7 @@ pci_disable_device(struct pci_dev *dev)
 
 	dev->is_busmaster = 0;
 }
-
+EXPORT_SYMBOL(pci_disable_device);
 /**
  * pcibios_set_pcie_reset_state - set reset state for device dev
  * @dev: the PCIe device reset
@@ -2719,6 +2726,38 @@ int pci_request_regions_exclusive(struct pci_dev *pdev, const char *res_name)
 	return pci_request_selected_regions_exclusive(pdev,
 					((1 << 6) - 1), res_name);
 }
+EXPORT_SYMBOL(pci_request_regions_exclusive);
+
+/**
+ *	pci_remap_iospace - Remap the memory mapped I/O space
+ *	@res: Resource describing the I/O space
+ *	@phys_addr: physical address of range to be mapped
+ *
+ *	Remap the memory mapped I/O space described by the @res
+ *	and the CPU physical address @phys_addr into virtual address space.
+ *	Only architectures that have memory mapped IO functions defined
+ *	(and the PCI_IOBASE value defined) should call this function.
+ */
+int __weak pci_remap_iospace(const struct resource *res, phys_addr_t phys_addr)
+{
+#if defined(PCI_IOBASE) && defined(CONFIG_MMU)
+	unsigned long vaddr = (unsigned long)PCI_IOBASE + res->start;
+
+	if (!(res->flags & IORESOURCE_IO))
+		return -EINVAL;
+
+	if (res->end > IO_SPACE_LIMIT)
+		return -EINVAL;
+
+	return ioremap_page_range(vaddr, vaddr + resource_size(res), phys_addr,
+				  pgprot_device(PAGE_KERNEL));
+#else
+	/* this architecture does not have memory mapped I/O space,
+	   so this function should never be called */
+	WARN_ONCE(1, "This architecture does not support memory mapped I/O\n");
+	return -ENODEV;
+#endif
+}
 
 static void __pci_set_master(struct pci_dev *dev, bool enable)
 {
@@ -2788,7 +2827,7 @@ void pci_set_master(struct pci_dev *dev)
 	__pci_set_master(dev, true);
 	pcibios_set_master(dev);
 }
-
+EXPORT_SYMBOL(pci_set_master);
 /**
  * pci_clear_master - disables bus-mastering for device dev
  * @dev: the PCI device to disable
@@ -3939,6 +3978,10 @@ static int __init pci_setup(char *str)
 }
 early_param("pci", pci_setup);
 
+EXPORT_SYMBOL_GPL(pci_save_state);
+EXPORT_SYMBOL_GPL(pci_restore_state);
+
+/*
 EXPORT_SYMBOL(pci_reenable_device);
 EXPORT_SYMBOL(pci_enable_device_io);
 EXPORT_SYMBOL(pci_enable_device_mem);
@@ -3968,8 +4011,6 @@ EXPORT_SYMBOL(pci_find_parent_resource);
 EXPORT_SYMBOL(pci_select_bars);
 
 EXPORT_SYMBOL(pci_set_power_state);
-EXPORT_SYMBOL(pci_save_state);
-EXPORT_SYMBOL(pci_restore_state);
 EXPORT_SYMBOL(pci_pme_capable);
 EXPORT_SYMBOL(pci_pme_active);
 EXPORT_SYMBOL(pci_wake_from_d3);
@@ -3977,3 +4018,5 @@ EXPORT_SYMBOL(pci_target_state);
 EXPORT_SYMBOL(pci_prepare_to_sleep);
 EXPORT_SYMBOL(pci_back_from_sleep);
 EXPORT_SYMBOL_GPL(pci_set_pcie_reset_state);
+*/
+

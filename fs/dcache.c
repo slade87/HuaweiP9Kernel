@@ -2569,6 +2569,7 @@ static int prepend_path(const struct path *path,
 	return error;
 
 global_root:
+
 	if (!slash)
 		error = prepend(buffer, buflen, "/", 1);
 	if (!error)
@@ -2656,22 +2657,7 @@ static int prepend_unreachable(char **buffer, int *buflen)
 	return prepend(buffer, buflen, "(unreachable)", 13);
 }
 
-/**
- * d_path - return the path of a dentry
- * @path: path to report
- * @buf: buffer to return value in
- * @buflen: buffer length
- *
- * Convert a dentry into an ASCII path name. If the entry has been deleted
- * the string " (deleted)" is appended. Note that this is ambiguous.
- *
- * Returns a pointer into the buffer or an error code if the path was
- * too long. Note: Callers should use the returned pointer, not the passed
- * in buffer, to use the name! The implementation often starts at an offset
- * into the buffer, and may leave 0 bytes at the start.
- *
- * "buflen" should be positive.
- */
+
 char *d_path(const struct path *path, char *buf, int buflen)
 {
 	char *res = buf + buflen;

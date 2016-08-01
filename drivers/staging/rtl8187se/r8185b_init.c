@@ -51,8 +51,8 @@ static u8 MAC_REG_TABLE[][2] =	{
 	{0x58, 0x00}, {0x59, 0x00}, {0x5a, 0x04}, {0x5b, 0x00}, {0x60, 0x24},
 	{0x61, 0x97}, {0x62, 0xF0}, {0x63, 0x09}, {0x80, 0x0F}, {0x81, 0xFF},
 	{0x82, 0xFF}, {0x83, 0x03},
-	{0xC4, 0x22}, {0xC5, 0x22}, {0xC6, 0x22}, {0xC7, 0x22}, {0xC8, 0x22}, /* lzm add 080826 */
-	{0xC9, 0x22}, {0xCA, 0x22}, {0xCB, 0x22}, {0xCC, 0x22}, {0xCD, 0x22}, /* lzm add 080826 */
+	{0xC4, 0x22}, {0xC5, 0x22}, {0xC6, 0x22}, {0xC7, 0x22}, {0xC8, 0x22},
+	{0xC9, 0x22}, {0xCA, 0x22}, {0xCB, 0x22}, {0xCC, 0x22}, {0xCD, 0x22},
 	{0xe2, 0x00},
 
 
@@ -439,7 +439,6 @@ static void ZEBRA_Config_85BASIC_HardCode(struct net_device *dev)
 	/* DAC calibration off 20070702	*/
 	RF_WriteReg(dev, 0x06, 0x00c1);		mdelay(1);
 	RF_WriteReg(dev, 0x0a, 0x0001);		mdelay(1);
-	/* For crystal calibration, added by Roger, 2007.12.11. */
 	if (priv->bXtalCalibration) { /* reg 30.	*/
 	 /*
  	  *  enable crystal calibration.
@@ -548,7 +547,6 @@ static void ZEBRA_Config_85BASIC_HardCode(struct net_device *dev)
 	 * by amy for antenna
 	 *===========================================================================
 	 */
-	/* Config Sw/Hw  Combinational Antenna Diversity. Added by Roger, 2008.02.26.	*/
 	SetAntennaConfig87SE(dev, priv->bDefaultAntenna1, priv->bSwAntennaDiverity);
 }
 
@@ -557,7 +555,6 @@ void UpdateInitialGain(struct net_device *dev)
 {
 	struct r8180_priv *priv = (struct r8180_priv *)ieee80211_priv(dev);
 
-	/* lzm add 080826 */
 	if (priv->eRFPowerState != eRfOn) {
 		/*	Don't access BB/RF under disable PLL situation.
 		 *	RT_TRACE(COMP_DIG, DBG_LOUD, ("UpdateInitialGain - pHalData->eRFPowerState!=eRfOn\n"));
@@ -651,11 +648,7 @@ static void PhyConfig8185(struct net_device *dev)
 			priv->InitialGain = 4;
 	}
 
-	/*
-	 *	Enable thermal meter indication to implement TxPower tracking on 87SE.
-	 *	We initialize thermal meter here to avoid unsuccessful configuration.
-	 *	Added by Roger, 2007.12.11.
-	 */
+	
 	if (priv->bTxPowerTrack)
 		InitTxPwrTracking87SE(dev);
 
@@ -762,7 +755,6 @@ static void MacConfig_85BASIC(struct net_device *dev)
 	/* Interrupt Migration, Jong suggested we use set 0x0000 first, 2005.12.14, by rcnjko. */
 	write_nic_word(dev, IntMig, 0x0000);
 
-	/* Prevent TPC to cause CRC error. Added by Annie, 2006-06-10. */
 	PlatformIOWrite4Byte(dev, 0x1F0, 0x00000000);
 	PlatformIOWrite4Byte(dev, 0x1F4, 0x00000000);
 	PlatformIOWrite1Byte(dev, 0x1F8, 0x00);

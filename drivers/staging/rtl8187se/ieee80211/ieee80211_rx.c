@@ -1,24 +1,4 @@
-/*
- * Original code based Host AP (software wireless LAN access point) driver
- * for Intersil Prism2/2.5/3 - hostap.o module, common routines
- *
- * Copyright (c) 2001-2002, SSH Communications Security Corp and Jouni Malinen
- * <jkmaline@cc.hut.fi>
- * Copyright (c) 2002-2003, Jouni Malinen <jkmaline@cc.hut.fi>
- * Copyright (c) 2004, Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation. See README and COPYING for
- * more details.
- ******************************************************************************
 
-  Few modifications for Realtek's Wi-Fi drivers by
-  Andrea Merello <andreamrl@tiscali.it>
-
-  A special thanks goes to Realtek for their support !
-
-******************************************************************************/
 
 
 #include <linux/compiler.h>
@@ -501,7 +481,6 @@ int ieee80211_rtl_rx(struct ieee80211_device *ieee, struct sk_buff *skb,
 
 	frag = WLAN_GET_SEQ_FRAG(sc);
 
-//YJ,add,080828,for keep alive
 	if ((fc & IEEE80211_FCTL_TODS) != IEEE80211_FCTL_TODS) {
 		if (!memcmp(hdr->addr1, dev->dev_addr, ETH_ALEN))
 			ieee->NumRxUnicast++;
@@ -509,7 +488,6 @@ int ieee80211_rtl_rx(struct ieee80211_device *ieee, struct sk_buff *skb,
 		if (!memcmp(hdr->addr3, dev->dev_addr, ETH_ALEN))
 			ieee->NumRxUnicast++;
 	}
-//YJ,add,080828,for keep alive,end
 
 	hdrlen = ieee80211_get_hdrlen(fc);
 
@@ -597,7 +575,7 @@ int ieee80211_rtl_rx(struct ieee80211_device *ieee, struct sk_buff *skb,
 	    stype != IEEE80211_STYPE_DATA_CFACK &&
 	    stype != IEEE80211_STYPE_DATA_CFPOLL &&
 	    stype != IEEE80211_STYPE_DATA_CFACKPOLL &&
-	    stype != IEEE80211_STYPE_QOS_DATA//add by David,2006.8.4
+	    stype != IEEE80211_STYPE_QOS_DATA
 	    ) {
 		if (stype != IEEE80211_STYPE_NULLFUNC)
 			IEEE80211_DEBUG_DROP(
@@ -1039,7 +1017,6 @@ inline int ieee80211_network_init(
 
 			//printk("offset1:%x aid:%x\n",offset, ieee->assoc_id);
 
-			/* add and modified for ps 2008.1.22 */
 			if (ieee->assoc_id < 8*offset ||
 				ieee->assoc_id > 8*(offset + info_element->len - 3)) {
 				break;
@@ -1225,7 +1202,6 @@ inline void update_network(struct ieee80211_network *dst,
 	dst->HighestOperaRate = src->HighestOperaRate;
 	//printk("==========>in %s: src->ssid is %s,chan is %d\n",__func__,src->ssid,src->channel);
 
-	//YJ,add,080819,for hidden ap
 	if (src->ssid_len > 0) {
 		//if(src->ssid_len == 13)
 		//	printk("=====================>>>>>>>> Dst ssid: %s Src ssid: %s\n", dst->ssid, src->ssid);
@@ -1233,7 +1209,6 @@ inline void update_network(struct ieee80211_network *dst,
 		dst->ssid_len = src->ssid_len;
 		memcpy(dst->ssid, src->ssid, src->ssid_len);
 	}
-	//YJ,add,080819,for hidden ap,end
 
 	dst->channel = src->channel;
 	dst->mode = src->mode;
@@ -1256,7 +1231,6 @@ inline void update_network(struct ieee80211_network *dst,
 
 	dst->last_scanned = jiffies;
 	/* dst->last_associate is not overwritten */
-// disable QoS process now, added by David 2006/7/25
 #if 1
 	dst->wmm_info = src->wmm_info; //sure to exist in beacon or probe response frame.
 /*
@@ -1295,7 +1269,7 @@ inline void ieee80211_process_probe_response(
 	unsigned long flags;
 	short renew;
 	u8 wmm_info;
-	u8 is_beacon = (WLAN_FC_GET_STYPE(beacon->header.frame_ctl) == IEEE80211_STYPE_BEACON) ? 1 : 0;  //YJ,add,080819,for hidden ap
+	u8 is_beacon = (WLAN_FC_GET_STYPE(beacon->header.frame_ctl) == IEEE80211_STYPE_BEACON) ? 1 : 0;
 
 	memset(&network, 0, sizeof(struct ieee80211_network));
 
@@ -1386,12 +1360,10 @@ inline void ieee80211_process_probe_response(
 
 	if (is_same_network(&ieee->current_network, &network, ieee)) {
 		wmm_info = ieee->current_network.wmm_info;
-		//YJ,add,080819,for hidden ap
 		if (is_beacon == 0)
 			network.flags = (~NETWORK_EMPTY_ESSID & network.flags)|(NETWORK_EMPTY_ESSID & ieee->current_network.flags);
 		else if (ieee->state == IEEE80211_LINKED)
 			ieee->NumRxBcnInPeriod++;
-		//YJ,add,080819,for hidden ap,end
 		//printk("====>network.ssid=%s cur_ssid=%s\n", network.ssid, ieee->current_network.ssid);
 		update_network(&ieee->current_network, &network);
 	}
@@ -1450,7 +1422,6 @@ inline void ieee80211_process_probe_response(
 		 * net and call the new_net handler
 		 */
 		renew = !time_after(target->last_scanned + ieee->scan_age, jiffies);
-		//YJ,add,080819,for hidden ap
 		if (is_beacon == 0)
 			network.flags = (~NETWORK_EMPTY_ESSID & network.flags)|(NETWORK_EMPTY_ESSID & target->flags);
 		//if(strncmp(network.ssid, "linksys-c",9) == 0)
@@ -1459,7 +1430,6 @@ inline void ieee80211_process_probe_response(
 		    && (((network.ssid_len > 0) && (strncmp(target->ssid, network.ssid, network.ssid_len)))\
 		    || ((ieee->current_network.ssid_len == network.ssid_len) && (strncmp(ieee->current_network.ssid, network.ssid, network.ssid_len) == 0) && (ieee->state == IEEE80211_NOLINK))))
 			renew = 1;
-		//YJ,add,080819,for hidden ap,end
 		update_network(target, &network);
 	}
 

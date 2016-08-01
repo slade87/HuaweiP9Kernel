@@ -82,7 +82,6 @@ mwifiex_11n_form_amsdu_pkt(struct sk_buff *skb_aggr,
 	/* Add payload */
 	memcpy(skb_put(skb_aggr, skb_src->len), skb_src->data, skb_src->len);
 
-	/* Add padding for new MSDU to start from 4 byte boundary */
 	*pad = (4 - ((unsigned long)skb_aggr->tail & 0x3)) % 4;
 
 	return skb_aggr->len + *pad;

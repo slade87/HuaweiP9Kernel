@@ -1,249 +1,4 @@
-/*
- * INET		An implementation of the TCP/IP protocol suite for the LINUX
- *		operating system.  INET is implemented using the  BSD Socket
- *		interface as the means of communication with the user level.
- *
- *		Implementation of the Transmission Control Protocol(TCP).
- *
- * Authors:	Ross Biro
- *		Fred N. van Kempen, <waltje@uWalt.NL.Mugnet.ORG>
- *		Mark Evans, <evansmp@uhura.aston.ac.uk>
- *		Corey Minyard <wf-rch!minyard@relay.EU.net>
- *		Florian La Roche, <flla@stud.uni-sb.de>
- *		Charles Hedrick, <hedrick@klinzhai.rutgers.edu>
- *		Linus Torvalds, <torvalds@cs.helsinki.fi>
- *		Alan Cox, <gw4pts@gw4pts.ampr.org>
- *		Matthew Dillon, <dillon@apollo.west.oic.com>
- *		Arnt Gulbrandsen, <agulbra@nvg.unit.no>
- *		Jorge Cwik, <jorge@laser.satlink.net>
- *
- * Fixes:
- *		Alan Cox	:	Numerous verify_area() calls
- *		Alan Cox	:	Set the ACK bit on a reset
- *		Alan Cox	:	Stopped it crashing if it closed while
- *					sk->inuse=1 and was trying to connect
- *					(tcp_err()).
- *		Alan Cox	:	All icmp error handling was broken
- *					pointers passed where wrong and the
- *					socket was looked up backwards. Nobody
- *					tested any icmp error code obviously.
- *		Alan Cox	:	tcp_err() now handled properly. It
- *					wakes people on errors. poll
- *					behaves and the icmp error race
- *					has gone by moving it into sock.c
- *		Alan Cox	:	tcp_send_reset() fixed to work for
- *					everything not just packets for
- *					unknown sockets.
- *		Alan Cox	:	tcp option processing.
- *		Alan Cox	:	Reset tweaked (still not 100%) [Had
- *					syn rule wrong]
- *		Herp Rosmanith  :	More reset fixes
- *		Alan Cox	:	No longer acks invalid rst frames.
- *					Acking any kind of RST is right out.
- *		Alan Cox	:	Sets an ignore me flag on an rst
- *					receive otherwise odd bits of prattle
- *					escape still
- *		Alan Cox	:	Fixed another acking RST frame bug.
- *					Should stop LAN workplace lockups.
- *		Alan Cox	: 	Some tidyups using the new skb list
- *					facilities
- *		Alan Cox	:	sk->keepopen now seems to work
- *		Alan Cox	:	Pulls options out correctly on accepts
- *		Alan Cox	:	Fixed assorted sk->rqueue->next errors
- *		Alan Cox	:	PSH doesn't end a TCP read. Switched a
- *					bit to skb ops.
- *		Alan Cox	:	Tidied tcp_data to avoid a potential
- *					nasty.
- *		Alan Cox	:	Added some better commenting, as the
- *					tcp is hard to follow
- *		Alan Cox	:	Removed incorrect check for 20 * psh
- *	Michael O'Reilly	:	ack < copied bug fix.
- *	Johannes Stille		:	Misc tcp fixes (not all in yet).
- *		Alan Cox	:	FIN with no memory -> CRASH
- *		Alan Cox	:	Added socket option proto entries.
- *					Also added awareness of them to accept.
- *		Alan Cox	:	Added TCP options (SOL_TCP)
- *		Alan Cox	:	Switched wakeup calls to callbacks,
- *					so the kernel can layer network
- *					sockets.
- *		Alan Cox	:	Use ip_tos/ip_ttl settings.
- *		Alan Cox	:	Handle FIN (more) properly (we hope).
- *		Alan Cox	:	RST frames sent on unsynchronised
- *					state ack error.
- *		Alan Cox	:	Put in missing check for SYN bit.
- *		Alan Cox	:	Added tcp_select_window() aka NET2E
- *					window non shrink trick.
- *		Alan Cox	:	Added a couple of small NET2E timer
- *					fixes
- *		Charles Hedrick :	TCP fixes
- *		Toomas Tamm	:	TCP window fixes
- *		Alan Cox	:	Small URG fix to rlogin ^C ack fight
- *		Charles Hedrick	:	Rewrote most of it to actually work
- *		Linus		:	Rewrote tcp_read() and URG handling
- *					completely
- *		Gerhard Koerting:	Fixed some missing timer handling
- *		Matthew Dillon  :	Reworked TCP machine states as per RFC
- *		Gerhard Koerting:	PC/TCP workarounds
- *		Adam Caldwell	:	Assorted timer/timing errors
- *		Matthew Dillon	:	Fixed another RST bug
- *		Alan Cox	:	Move to kernel side addressing changes.
- *		Alan Cox	:	Beginning work on TCP fastpathing
- *					(not yet usable)
- *		Arnt Gulbrandsen:	Turbocharged tcp_check() routine.
- *		Alan Cox	:	TCP fast path debugging
- *		Alan Cox	:	Window clamping
- *		Michael Riepe	:	Bug in tcp_check()
- *		Matt Dillon	:	More TCP improvements and RST bug fixes
- *		Matt Dillon	:	Yet more small nasties remove from the
- *					TCP code (Be very nice to this man if
- *					tcp finally works 100%) 8)
- *		Alan Cox	:	BSD accept semantics.
- *		Alan Cox	:	Reset on closedown bug.
- *	Peter De Schrijver	:	ENOTCONN check missing in tcp_sendto().
- *		Michael Pall	:	Handle poll() after URG properly in
- *					all cases.
- *		Michael Pall	:	Undo the last fix in tcp_read_urg()
- *					(multi URG PUSH broke rlogin).
- *		Michael Pall	:	Fix the multi URG PUSH problem in
- *					tcp_readable(), poll() after URG
- *					works now.
- *		Michael Pall	:	recv(...,MSG_OOB) never blocks in the
- *					BSD api.
- *		Alan Cox	:	Changed the semantics of sk->socket to
- *					fix a race and a signal problem with
- *					accept() and async I/O.
- *		Alan Cox	:	Relaxed the rules on tcp_sendto().
- *		Yury Shevchuk	:	Really fixed accept() blocking problem.
- *		Craig I. Hagan  :	Allow for BSD compatible TIME_WAIT for
- *					clients/servers which listen in on
- *					fixed ports.
- *		Alan Cox	:	Cleaned the above up and shrank it to
- *					a sensible code size.
- *		Alan Cox	:	Self connect lockup fix.
- *		Alan Cox	:	No connect to multicast.
- *		Ross Biro	:	Close unaccepted children on master
- *					socket close.
- *		Alan Cox	:	Reset tracing code.
- *		Alan Cox	:	Spurious resets on shutdown.
- *		Alan Cox	:	Giant 15 minute/60 second timer error
- *		Alan Cox	:	Small whoops in polling before an
- *					accept.
- *		Alan Cox	:	Kept the state trace facility since
- *					it's handy for debugging.
- *		Alan Cox	:	More reset handler fixes.
- *		Alan Cox	:	Started rewriting the code based on
- *					the RFC's for other useful protocol
- *					references see: Comer, KA9Q NOS, and
- *					for a reference on the difference
- *					between specifications and how BSD
- *					works see the 4.4lite source.
- *		A.N.Kuznetsov	:	Don't time wait on completion of tidy
- *					close.
- *		Linus Torvalds	:	Fin/Shutdown & copied_seq changes.
- *		Linus Torvalds	:	Fixed BSD port reuse to work first syn
- *		Alan Cox	:	Reimplemented timers as per the RFC
- *					and using multiple timers for sanity.
- *		Alan Cox	:	Small bug fixes, and a lot of new
- *					comments.
- *		Alan Cox	:	Fixed dual reader crash by locking
- *					the buffers (much like datagram.c)
- *		Alan Cox	:	Fixed stuck sockets in probe. A probe
- *					now gets fed up of retrying without
- *					(even a no space) answer.
- *		Alan Cox	:	Extracted closing code better
- *		Alan Cox	:	Fixed the closing state machine to
- *					resemble the RFC.
- *		Alan Cox	:	More 'per spec' fixes.
- *		Jorge Cwik	:	Even faster checksumming.
- *		Alan Cox	:	tcp_data() doesn't ack illegal PSH
- *					only frames. At least one pc tcp stack
- *					generates them.
- *		Alan Cox	:	Cache last socket.
- *		Alan Cox	:	Per route irtt.
- *		Matt Day	:	poll()->select() match BSD precisely on error
- *		Alan Cox	:	New buffers
- *		Marc Tamsky	:	Various sk->prot->retransmits and
- *					sk->retransmits misupdating fixed.
- *					Fixed tcp_write_timeout: stuck close,
- *					and TCP syn retries gets used now.
- *		Mark Yarvis	:	In tcp_read_wakeup(), don't send an
- *					ack if state is TCP_CLOSED.
- *		Alan Cox	:	Look up device on a retransmit - routes may
- *					change. Doesn't yet cope with MSS shrink right
- *					but it's a start!
- *		Marc Tamsky	:	Closing in closing fixes.
- *		Mike Shaver	:	RFC1122 verifications.
- *		Alan Cox	:	rcv_saddr errors.
- *		Alan Cox	:	Block double connect().
- *		Alan Cox	:	Small hooks for enSKIP.
- *		Alexey Kuznetsov:	Path MTU discovery.
- *		Alan Cox	:	Support soft errors.
- *		Alan Cox	:	Fix MTU discovery pathological case
- *					when the remote claims no mtu!
- *		Marc Tamsky	:	TCP_CLOSE fix.
- *		Colin (G3TNE)	:	Send a reset on syn ack replies in
- *					window but wrong (fixes NT lpd problems)
- *		Pedro Roque	:	Better TCP window handling, delayed ack.
- *		Joerg Reuter	:	No modification of locked buffers in
- *					tcp_do_retransmit()
- *		Eric Schenk	:	Changed receiver side silly window
- *					avoidance algorithm to BSD style
- *					algorithm. This doubles throughput
- *					against machines running Solaris,
- *					and seems to result in general
- *					improvement.
- *	Stefan Magdalinski	:	adjusted tcp_readable() to fix FIONREAD
- *	Willy Konynenberg	:	Transparent proxying support.
- *	Mike McLagan		:	Routing by source
- *		Keith Owens	:	Do proper merging with partial SKB's in
- *					tcp_do_sendmsg to avoid burstiness.
- *		Eric Schenk	:	Fix fast close down bug with
- *					shutdown() followed by close().
- *		Andi Kleen 	:	Make poll agree with SIGIO
- *	Salvatore Sanfilippo	:	Support SO_LINGER with linger == 1 and
- *					lingertime == 0 (RFC 793 ABORT Call)
- *	Hirokazu Takahashi	:	Use copy_from_user() instead of
- *					csum_and_copy_from_user() if possible.
- *
- *		This program is free software; you can redistribute it and/or
- *		modify it under the terms of the GNU General Public License
- *		as published by the Free Software Foundation; either version
- *		2 of the License, or(at your option) any later version.
- *
- * Description of States:
- *
- *	TCP_SYN_SENT		sent a connection request, waiting for ack
- *
- *	TCP_SYN_RECV		received a connection request, sent ack,
- *				waiting for final ack in three-way handshake.
- *
- *	TCP_ESTABLISHED		connection established
- *
- *	TCP_FIN_WAIT1		our side has shutdown, waiting to complete
- *				transmission of remaining buffered data
- *
- *	TCP_FIN_WAIT2		all buffered data sent, waiting for remote
- *				to shutdown
- *
- *	TCP_CLOSING		both sides have shutdown but we still have
- *				data we have to finish sending
- *
- *	TCP_TIME_WAIT		timeout to catch resent junk before entering
- *				closed, can only be entered from FIN_WAIT2
- *				or CLOSING.  Required because the other end
- *				may not have gotten our last ACK causing it
- *				to retransmit the data packet (which we ignore)
- *
- *	TCP_CLOSE_WAIT		remote side has shutdown and is waiting for
- *				us to finish writing our data and to shutdown
- *				(we have to close() to move on to LAST_ACK)
- *
- *	TCP_LAST_ACK		out side has shutdown after remote has
- *				shutdown.  There may still be data in our
- *				buffer that we have to finish sending
- *
- *	TCP_CLOSE		socket is finished
- */
+
 
 #define pr_fmt(fmt) "TCP: " fmt
 
@@ -268,17 +23,29 @@
 #include <linux/crypto.h>
 #include <linux/time.h>
 #include <linux/slab.h>
+#include <linux/uid_stat.h>
 
 #include <net/icmp.h>
 #include <net/inet_common.h>
 #include <net/tcp.h>
 #include <net/xfrm.h>
 #include <net/ip.h>
+#include <net/ip6_route.h>
+#include <net/ipv6.h>
+#include <net/transp_v6.h>
 #include <net/netdma.h>
 #include <net/sock.h>
 
 #include <asm/uaccess.h>
 #include <asm/ioctls.h>
+
+#ifdef CONFIG_HW_WIFIPRO
+#include "wifipro_tcp_monitor.h"
+#endif
+
+#ifdef CONFIG_HW_WIFI
+#include "wifi_tcp_statistics.h"
+#endif
 
 int sysctl_tcp_fin_timeout __read_mostly = TCP_FIN_TIMEOUT;
 
@@ -417,6 +184,11 @@ void tcp_init_sock(struct sock *sk)
 	 */
 	sk->sk_sndbuf = sysctl_tcp_wmem[1];
 	sk->sk_rcvbuf = sysctl_tcp_rmem[1];
+
+#ifdef CONFIG_HW_WIFI
+	tp->dack_rcv_nxt = 0;
+	tp->dack_seq_num = 0;
+#endif
 
 	local_bh_disable();
 	sock_update_memcg(sk);
@@ -1075,6 +847,17 @@ int tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		/* 'common' sending to sendq */
 	}
 
+#ifdef CONFIG_HUAWEI_BASTET
+	BST_FG_HOOK_UL_STUB( sk, msg );
+	err = bastet_send_priority_msg(sk, msg, size);
+	if (err < 0) {
+		goto out_err;
+	} else if (err > 0) {
+		release_sock(sk);
+		return size;
+	}
+#endif
+
 	/* This should be in poll */
 	clear_bit(SOCK_ASYNC_NOSPACE, &sk->sk_socket->flags);
 
@@ -1240,6 +1023,9 @@ out:
 		tcp_push(sk, flags, mss_now, tp->nonagle);
 out_nopush:
 	release_sock(sk);
+
+	if (copied + copied_syn)
+		uid_stat_tcp_snd(current_uid(), copied + copied_syn);
 	return copied + copied_syn;
 
 do_fault:
@@ -1544,6 +1330,7 @@ int tcp_read_sock(struct sock *sk, read_descriptor_t *desc,
 	if (copied > 0) {
 		tcp_recv_skb(sk, seq, &offset);
 		tcp_cleanup_rbuf(sk, copied);
+		uid_stat_tcp_rcv(current_uid(), copied);
 	}
 	return copied;
 }
@@ -1728,32 +1515,7 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			WARN_ON(tp->copied_seq != tp->rcv_nxt &&
 				!(flags & (MSG_PEEK | MSG_TRUNC)));
 
-			/* Ugly... If prequeue is not empty, we have to
-			 * process it before releasing socket, otherwise
-			 * order will be broken at second iteration.
-			 * More elegant solution is required!!!
-			 *
-			 * Look: we have the following (pseudo)queues:
-			 *
-			 * 1. packets in flight
-			 * 2. backlog
-			 * 3. prequeue
-			 * 4. receive_queue
-			 *
-			 * Each queue can be processed only if the next ones
-			 * are empty. At this point we have empty receive_queue.
-			 * But prequeue _can_ be not empty after 2nd iteration,
-			 * when we jumped to start of loop because backlog
-			 * processing added something to receive_queue.
-			 * We cannot release_sock(), because backlog contains
-			 * packets arrived _after_ prequeued ones.
-			 *
-			 * Shortly, algorithm is clear --- to process all
-			 * the queues in order. We could make it more directly,
-			 * requeueing packets from backlog to prequeue, if
-			 * is not empty. It is more elegant, but eats cycles,
-			 * unfortunately.
-			 */
+			
 			if (!skb_queue_empty(&tp->ucopy.prequeue))
 				goto do_prequeue;
 
@@ -1948,6 +1710,9 @@ skip_copy:
 	tcp_cleanup_rbuf(sk, copied);
 
 	release_sock(sk);
+
+	if (copied > 0)
+		uid_stat_tcp_rcv(current_uid(), copied);
 	return copied;
 
 out:
@@ -1956,6 +1721,8 @@ out:
 
 recv_urg:
 	err = tcp_recv_urg(sk, msg, len, flags);
+	if (err > 0)
+		uid_stat_tcp_rcv(current_uid(), err);
 	goto out;
 
 recv_sndq:
@@ -1967,6 +1734,15 @@ EXPORT_SYMBOL(tcp_recvmsg);
 void tcp_set_state(struct sock *sk, int state)
 {
 	int oldstate = sk->sk_state;
+#ifdef CONFIG_HW_WIFIPRO
+    struct inet_sock *inet_temp = inet_sk(sk);
+    unsigned int dest_addr = 0;
+    unsigned int dest_port = 0;
+    if( NULL != inet_temp){
+        dest_addr = htonl( inet_temp->inet_daddr );
+        dest_port = htons( inet_temp->inet_dport );
+    }
+#endif
 
 	switch (state) {
 	case TCP_ESTABLISHED:
@@ -1978,6 +1754,11 @@ void tcp_set_state(struct sock *sk, int state)
 		if (oldstate == TCP_CLOSE_WAIT || oldstate == TCP_ESTABLISHED)
 			TCP_INC_STATS(sock_net(sk), TCP_MIB_ESTABRESETS);
 
+#ifdef CONFIG_HW_WIFI
+		if ( oldstate == TCP_ESTABLISHED)
+			wifi_IncrEstabliseRstSegs(sk, 1);
+#endif
+
 		sk->sk_prot->unhash(sk);
 		if (inet_csk(sk)->icsk_bind_hash &&
 		    !(sk->sk_userlocks & SOCK_BINDPORT_LOCK))
@@ -1988,10 +1769,25 @@ void tcp_set_state(struct sock *sk, int state)
 			TCP_DEC_STATS(sock_net(sk), TCP_MIB_CURRESTAB);
 	}
 
+#ifdef CONFIG_HUAWEI_BASTET
+	bastet_check_partner(sk, state);
+	BST_FG_CheckSockUid(sk, state);
+#endif
 	/* Change state AFTER socket is unhashed to avoid closed
 	 * socket sitting in hash tables.
 	 */
 	sk->sk_state = state;
+
+#ifdef CONFIG_HW_WIFIPRO
+    if(state == TCP_SYN_SENT){
+        if(is_wifipro_on && is_mcc_china && wifipro_is_not_local_or_lan_sock(dest_addr)){
+            if(wifipro_is_google_sock(current, dest_addr)){
+                sk->wifipro_is_google_sock = 1;
+                WIFIPRO_DEBUG("add a google sock:%s", wifipro_ntoa(dest_addr));
+            }
+        }
+    }
+#endif
 
 #ifdef STATE_TRACE
 	SOCK_DEBUG(sk, "TCP sk=%p, State %s -> %s\n", sk, statename[oldstate], statename[state]);
@@ -2473,10 +2269,19 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		if (!tcp_can_repair_sock(sk))
 			err = -EPERM;
 		else if (val == 1) {
+#ifdef CONFIG_HUAWEI_BASTET
+			if (bastet_sock_repair_prepare_notify(sk, val)) {
+				err = -EPERM;
+				break;
+			}
+#endif
 			tp->repair = 1;
 			sk->sk_reuse = SK_FORCE_REUSE;
 			tp->repair_queue = TCP_NO_QUEUE;
 		} else if (val == 0) {
+#ifdef CONFIG_HUAWEI_BASTET
+			bastet_sock_repair_prepare_notify(sk, val);
+#endif
 			tp->repair = 0;
 			sk->sk_reuse = SK_NO_REUSE;
 			tcp_send_window_probe(sk);
@@ -2647,6 +2452,11 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		else
 			tp->tsoffset = val - tcp_time_stamp;
 		break;
+#ifdef CONFIG_HUAWEI_BASTET
+	case TCP_RECONN:
+		bastet_reconn_config(sk, val);
+		break;
+#endif
 	default:
 		err = -ENOPROTOOPT;
 		break;
@@ -3468,3 +3278,108 @@ void __init tcp_init(void)
 
 	tcp_tasklet_init();
 }
+
+static int tcp_is_local(struct net *net, __be32 addr) {
+	struct rtable *rt;
+	struct flowi4 fl4 = { .daddr = addr };
+	rt = ip_route_output_key(net, &fl4);
+	if (IS_ERR_OR_NULL(rt))
+		return 0;
+	return rt->dst.dev && (rt->dst.dev->flags & IFF_LOOPBACK);
+}
+
+#if defined(CONFIG_IPV6)
+static int tcp_is_local6(struct net *net, struct in6_addr *addr) {
+	struct rt6_info *rt6 = rt6_lookup(net, addr, addr, 0, 0);
+	return rt6 && rt6->dst.dev && (rt6->dst.dev->flags & IFF_LOOPBACK);
+}
+#endif
+
+/*
+ * tcp_nuke_addr - destroy all sockets on the given local address
+ * if local address is the unspecified address (0.0.0.0 or ::), destroy all
+ * sockets with local addresses that are not configured.
+ */
+int tcp_nuke_addr(struct net *net, struct sockaddr *addr)
+{
+	int family = addr->sa_family;
+	unsigned int bucket;
+
+	struct in_addr *in;
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+	struct in6_addr *in6 = NULL;
+#endif
+	if (family == AF_INET) {
+		in = &((struct sockaddr_in *)addr)->sin_addr;
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+	} else if (family == AF_INET6) {
+		in6 = &((struct sockaddr_in6 *)addr)->sin6_addr;
+#endif
+	} else {
+		return -EAFNOSUPPORT;
+	}
+
+	for (bucket = 0; bucket < tcp_hashinfo.ehash_mask; bucket++) {
+		struct hlist_nulls_node *node;
+		struct sock *sk;
+		spinlock_t *lock = inet_ehash_lockp(&tcp_hashinfo, bucket);
+
+restart:
+		spin_lock_bh(lock);
+		sk_nulls_for_each(sk, node, &tcp_hashinfo.ehash[bucket].chain) {
+			struct inet_sock *inet = inet_sk(sk);
+
+			if (sysctl_ip_dynaddr && sk->sk_state == TCP_SYN_SENT)
+				continue;
+			if (sock_flag(sk, SOCK_DEAD))
+				continue;
+
+			if (family == AF_INET) {
+				__be32 s4 = inet->inet_rcv_saddr;
+				if (s4 == LOOPBACK4_IPV6)
+					continue;
+
+				if (in->s_addr != s4 &&
+				    !(in->s_addr == INADDR_ANY &&
+				      !tcp_is_local(net, s4)))
+					continue;
+			}
+
+#if defined(CONFIG_IPV6)
+			if (family == AF_INET6) {
+				struct in6_addr *s6;
+				if (!inet->pinet6)
+					continue;
+
+				s6 = &inet->pinet6->rcv_saddr;
+				if (ipv6_addr_type(s6) == IPV6_ADDR_MAPPED)
+					continue;
+
+				if (!ipv6_addr_equal(in6, s6) &&
+				    !(ipv6_addr_equal(in6, &in6addr_any) &&
+				      !tcp_is_local6(net, s6)))
+				continue;
+			}
+#endif
+
+			sock_hold(sk);
+			spin_unlock_bh(lock);
+
+			local_bh_disable();
+			bh_lock_sock(sk);
+			sk->sk_err = ETIMEDOUT;
+			sk->sk_error_report(sk);
+
+			tcp_done(sk);
+			bh_unlock_sock(sk);
+			local_bh_enable();
+			sock_put(sk);
+
+			goto restart;
+		}
+		spin_unlock_bh(lock);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(tcp_nuke_addr);

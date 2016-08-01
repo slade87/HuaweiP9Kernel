@@ -188,10 +188,13 @@ int update_devfreq(struct devfreq *devfreq)
 	if (err)
 		return err;
 
-	if (devfreq->profile->freq_table)
-		if (devfreq_update_status(devfreq, freq))
+	if (devfreq->profile->freq_table){
+		if ((err = devfreq_update_status(devfreq, freq))) {
 			dev_err(&devfreq->dev,
 				"Couldn't update frequency transition information.\n");
+			return err;
+		}
+	}
 
 	devfreq->previous_freq = freq;
 	return err;
@@ -472,7 +475,7 @@ struct devfreq *devfreq_add_device(struct device *dev,
 						devfreq->profile->max_state *
 						devfreq->profile->max_state,
 						GFP_KERNEL);
-	devfreq->time_in_state = devm_kzalloc(dev, sizeof(unsigned int) *
+	devfreq->time_in_state = devm_kzalloc(dev, sizeof(unsigned long) *
 						devfreq->profile->max_state,
 						GFP_KERNEL);
 	devfreq->last_stat_updated = jiffies;
@@ -684,6 +687,48 @@ err_out:
 }
 EXPORT_SYMBOL(devfreq_remove_governor);
 
+int devfreq_qos_set_max(struct devfreq *df, unsigned long value)
+{
+	unsigned long min;
+	int ret = 0;
+
+	mutex_lock(&df->lock);
+	min = df->min_freq;
+	if (value && min && value < min) {
+		ret = -EINVAL;
+		goto unlock;
+	}
+
+	df->max_freq = value;
+	update_devfreq(df);
+unlock:
+	mutex_unlock(&df->lock);
+
+	return ret;
+}
+EXPORT_SYMBOL(devfreq_qos_set_max);
+
+int devfreq_qos_set_min(struct devfreq *df, unsigned long value)
+{
+	unsigned long max;
+	int ret = 0;
+
+	mutex_lock(&df->lock);
+	max = df->max_freq;
+	if (value && max && value > max) {
+		ret = -EINVAL;
+		goto unlock;
+	}
+
+	df->min_freq = value;
+	update_devfreq(df);
+unlock:
+	mutex_unlock(&df->lock);
+
+	return ret;
+}
+EXPORT_SYMBOL(devfreq_qos_set_min);
+
 static ssize_t show_governor(struct device *dev,
 			     struct device_attribute *attr, char *buf)
 {
@@ -704,6 +749,8 @@ static ssize_t store_governor(struct device *dev, struct device_attribute *attr,
 	ret = sscanf(buf, "%" __stringify(DEVFREQ_NAME_LEN) "s", str_governor);
 	if (ret != 1)
 		return -EINVAL;
+
+	str_governor[DEVFREQ_NAME_LEN] = '\0';
 
 	mutex_lock(&devfreq_list_lock);
 	governor = find_devfreq_governor(str_governor);
@@ -809,24 +856,15 @@ static ssize_t store_min_freq(struct device *dev, struct device_attribute *attr,
 	struct devfreq *df = to_devfreq(dev);
 	unsigned long value;
 	int ret;
-	unsigned long max;
 
 	ret = sscanf(buf, "%lu", &value);
 	if (ret != 1)
 		return -EINVAL;
 
-	mutex_lock(&df->lock);
-	max = df->max_freq;
-	if (value && max && value > max) {
-		ret = -EINVAL;
-		goto unlock;
-	}
+	ret = devfreq_qos_set_min(df, value);
+	if (!ret)
+		ret = count;
 
-	df->min_freq = value;
-	update_devfreq(df);
-	ret = count;
-unlock:
-	mutex_unlock(&df->lock);
 	return ret;
 }
 
@@ -842,24 +880,15 @@ static ssize_t store_max_freq(struct device *dev, struct device_attribute *attr,
 	struct devfreq *df = to_devfreq(dev);
 	unsigned long value;
 	int ret;
-	unsigned long min;
 
 	ret = sscanf(buf, "%lu", &value);
 	if (ret != 1)
 		return -EINVAL;
 
-	mutex_lock(&df->lock);
-	min = df->min_freq;
-	if (value && min && value < min) {
-		ret = -EINVAL;
-		goto unlock;
-	}
+	ret = devfreq_qos_set_max(df, value);
+	if (!ret)
+		ret = count;
 
-	df->max_freq = value;
-	update_devfreq(df);
-	ret = count;
-unlock:
-	mutex_unlock(&df->lock);
 	return ret;
 }
 
@@ -941,20 +970,21 @@ static ssize_t show_trans_table(struct device *dev, struct device_attribute *att
 	return len;
 }
 
+/*lint -e750 */
 static struct device_attribute devfreq_attrs[] = {
-	__ATTR(governor, S_IRUGO | S_IWUSR, show_governor, store_governor),
+	__ATTR(governor, (S_IRUGO | S_IWUSR), show_governor, store_governor),
 	__ATTR(available_governors, S_IRUGO, show_available_governors, NULL),
 	__ATTR(cur_freq, S_IRUGO, show_freq, NULL),
 	__ATTR(available_frequencies, S_IRUGO, show_available_freqs, NULL),
 	__ATTR(target_freq, S_IRUGO, show_target_freq, NULL),
-	__ATTR(polling_interval, S_IRUGO | S_IWUSR, show_polling_interval,
+	__ATTR(polling_interval, (S_IRUGO | S_IWUSR), show_polling_interval,
 	       store_polling_interval),
-	__ATTR(min_freq, S_IRUGO | S_IWUSR, show_min_freq, store_min_freq),
-	__ATTR(max_freq, S_IRUGO | S_IWUSR, show_max_freq, store_max_freq),
+	__ATTR(min_freq, (S_IRUGO | S_IWUSR), show_min_freq, store_min_freq),
+	__ATTR(max_freq, (S_IRUGO | S_IWUSR), show_max_freq, store_max_freq),
 	__ATTR(trans_stat, S_IRUGO, show_trans_table, NULL),
 	{ },
 };
-
+/*lint +e750 */
 static int __init devfreq_init(void)
 {
 	devfreq_class = class_create(THIS_MODULE, "devfreq");
@@ -1023,6 +1053,7 @@ struct opp *devfreq_recommended_opp(struct device *dev, unsigned long *freq,
 
 	return opp;
 }
+EXPORT_SYMBOL(devfreq_recommended_opp);
 
 /**
  * devfreq_register_opp_notifier() - Helper function to get devfreq notified
@@ -1046,6 +1077,7 @@ int devfreq_register_opp_notifier(struct device *dev, struct devfreq *devfreq)
 
 	return ret;
 }
+EXPORT_SYMBOL(devfreq_register_opp_notifier);
 
 /**
  * devfreq_unregister_opp_notifier() - Helper function to stop getting devfreq
@@ -1072,6 +1104,7 @@ int devfreq_unregister_opp_notifier(struct device *dev, struct devfreq *devfreq)
 
 	return ret;
 }
+EXPORT_SYMBOL(devfreq_unregister_opp_notifier);
 
 MODULE_AUTHOR("MyungJoo Ham <myungjoo.ham@samsung.com>");
 MODULE_DESCRIPTION("devfreq class support");

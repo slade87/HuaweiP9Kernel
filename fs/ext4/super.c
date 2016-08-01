@@ -43,6 +43,8 @@
 
 #include <linux/kthread.h>
 #include <linux/freezer.h>
+#include <linux/reboot.h>
+//#include <mach/boardid.h>
 
 #include "ext4.h"
 #include "ext4_extents.h"	/* Needed for trace points definition */
@@ -51,8 +53,32 @@
 #include "acl.h"
 #include "mballoc.h"
 
+#include "ext4_dump_info.h"
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/ext4.h>
+
+#ifdef CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA
+#include <asm/setup.h>
+#include "../mount.h"
+extern unsigned int get_datamount_flag(void);
+#define USERDATA_MOUNTPOINT "/data"
+#define USERDATA_MOUNTPOINT_LEN 5
+#endif
+extern unsigned int get_boot_into_recovery_flag(void);
+#ifdef CONFIG_HUAWEI_FS_DSM
+#include <dsm/dsm_pub.h>
+struct dsm_dev dsm_fs = {
+	.name = "dsm_fs",
+	.device_name = NULL,
+	.ic_name = NULL,
+	.module_name = NULL,
+	.fops = NULL,
+	.buff_size = 1024,
+};
+struct dsm_client *fs_dclient = NULL;
+#endif
+
 
 static struct proc_dir_entry *ext4_proc_root;
 static struct kset *ext4_kset;
@@ -305,6 +331,8 @@ static void __save_error_info(struct super_block *sb, const char *func,
 	struct ext4_super_block *es = EXT4_SB(sb)->s_es;
 
 	EXT4_SB(sb)->s_mount_state |= EXT4_ERROR_FS;
+	if (bdev_read_only(sb->s_bdev))
+		return;
 	es->s_state |= cpu_to_le16(EXT4_ERROR_FS);
 	es->s_last_error_time = cpu_to_le32(get_seconds());
 	strncpy(es->s_last_error_func, func, sizeof(es->s_last_error_func));
@@ -384,6 +412,52 @@ static void ext4_journal_commit_callback(journal_t *journal, transaction_t *txn)
  * that error until we've noted it down and cleared it.
  */
 
+#ifdef CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA
+static int ext4_get_mountpoint(struct super_block *sb)
+{
+	struct mount *mnt;
+	int ret = -1;
+	char *path;
+	char *p;
+
+	if (unlikely(!sb)) {
+		printk(KERN_ALERT "%s: sb is NULL\n", __func__);
+		return -EINVAL;
+	}
+
+	path = __getname();
+	if (!path)
+		return -ENOMEM;
+
+	list_for_each_entry(mnt, &sb->s_mounts, mnt_instance) {
+		if (NULL == mnt->mnt_mountpoint)
+			continue;
+		p = dentry_path_raw(mnt->mnt_mountpoint, path, PATH_MAX);
+		if (strncmp(USERDATA_MOUNTPOINT, p, USERDATA_MOUNTPOINT_LEN) == 0) {
+			printk(KERN_ALERT "%s: mount pointer name is %s\n", __func__, p);
+			ret = 0;
+			break;
+
+		}
+	}
+	__putname(path);
+
+	return ret;;
+}
+
+static inline void trigger_double_data(struct super_block *sb)
+{
+#ifndef TARGET_VERSION_FACTORY
+	if (get_boot_into_recovery_flag() == 0 && get_datamount_flag() == 0) {
+		if (ext4_get_mountpoint(sb) == 0) {
+			printk(KERN_CRIT "ext4_handle_error reboot mountfail\n");
+			kernel_restart("mountfail");
+		}
+	}
+#endif
+}
+#endif
+
 static void ext4_handle_error(struct super_block *sb)
 {
 	if (sb->s_flags & MS_RDONLY)
@@ -400,9 +474,16 @@ static void ext4_handle_error(struct super_block *sb)
 		ext4_msg(sb, KERN_CRIT, "Remounting filesystem read-only");
 		sb->s_flags |= MS_RDONLY;
 	}
+
+	dump_ext4_sb_info(sb);
+
 	if (test_opt(sb, ERRORS_PANIC))
 		panic("EXT4-fs (device %s): panic forced after error\n",
 			sb->s_id);
+
+#ifdef CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA
+	trigger_double_data(sb);
+#endif
 }
 
 void __ext4_error(struct super_block *sb, const char *function,
@@ -416,6 +497,13 @@ void __ext4_error(struct super_block *sb, const char *function,
 	vaf.va = &args;
 	printk(KERN_CRIT "EXT4-fs error (device %s): %s:%d: comm %s: %pV\n",
 	       sb->s_id, function, line, current->comm, &vaf);
+#ifdef CONFIG_HUAWEI_FS_DSM
+	if(!dsm_client_ocuppy(fs_dclient))
+	 {	
+	 	dsm_client_record(fs_dclient,"EXT4-fs error (device %s): %s:%d\n",sb->s_id, function, line);
+		dsm_client_notify(fs_dclient, DSM_FS_EXT4_ERROR);
+	 }
+#endif
 	va_end(args);
 	save_error_info(sb, function, line);
 
@@ -436,6 +524,14 @@ void ext4_error_inode(struct inode *inode, const char *function,
 	va_start(args, fmt);
 	vaf.fmt = fmt;
 	vaf.va = &args;
+#ifdef CONFIG_HUAWEI_FS_DSM
+	if(!dsm_client_ocuppy(fs_dclient))
+	 {	
+	 	dsm_client_record(fs_dclient,"EXT4-fs error (device %s): %s:%d:inode #%lu\n",
+                          inode->i_sb->s_id, function, line, inode->i_ino);
+		dsm_client_notify(fs_dclient, DSM_FS_EXT4_ERROR_INODE);
+	 }
+#endif
 	if (block)
 		printk(KERN_CRIT "EXT4-fs error (device %s): %s:%d: "
 		       "inode #%lu: block %llu: comm %s: %pV\n",
@@ -467,6 +563,14 @@ void ext4_error_file(struct file *file, const char *function,
 	path = d_path(&(file->f_path), pathname, sizeof(pathname));
 	if (IS_ERR(path))
 		path = "(unknown)";
+#ifdef CONFIG_HUAWEI_FS_DSM
+	if(!dsm_client_ocuppy(fs_dclient))
+	 {	
+	 	dsm_client_record(fs_dclient,"EXT4-fs error (device %s): %s:%d:inode #%lu\n",
+                          inode->i_sb->s_id, function, line, inode->i_ino);
+		dsm_client_notify(fs_dclient, DSM_FS_EXT4_ERROR_FILE);
+	 }
+#endif
 	va_start(args, fmt);
 	vaf.fmt = fmt;
 	vaf.va = &args;
@@ -576,8 +680,15 @@ void __ext4_abort(struct super_block *sb, const char *function,
 			jbd2_journal_abort(EXT4_SB(sb)->s_journal, -EIO);
 		save_error_info(sb, function, line);
 	}
+
+	dump_ext4_sb_info(sb);
+
 	if (test_opt(sb, ERRORS_PANIC))
 		panic("EXT4-fs panic from previous error\n");
+
+#ifdef CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA
+	trigger_double_data(sb);
+#endif
 }
 
 void ext4_msg(struct super_block *sb, const char *prefix, const char *fmt, ...)
@@ -1631,6 +1742,13 @@ static int parse_options(char *options, struct super_block *sb,
 		if (!sbi->s_jquota_fmt) {
 			ext4_msg(sb, KERN_ERR, "journaled quota format "
 					"not specified");
+			return 0;
+		}
+	} else {
+		if (sbi->s_jquota_fmt) {
+			ext4_msg(sb, KERN_ERR, "journaled quota format "
+					"specified with no journaling "
+					"enabled");
 			return 0;
 		}
 	}
@@ -3319,6 +3437,14 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	}
 
 	if (!(bh = sb_bread(sb, logical_sb_block))) {
+#ifdef CONFIG_HUAWEI_FS_DSM
+	    if(!dsm_client_ocuppy(fs_dclient))
+	    {	
+	 	   dsm_client_record(fs_dclient,"EXT4-fs(%s):unable to read superblock\n",sb->s_id);
+		   dsm_client_notify(fs_dclient, DSM_FS_EXT4_ERROR_READ_SUPER);
+	    }
+#endif
+	
 		ext4_msg(sb, KERN_ERR, "unable to read superblock");
 		goto out_fail;
 	}
@@ -3519,7 +3645,15 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 		logical_sb_block = sb_block * EXT4_MIN_BLOCK_SIZE;
 		offset = do_div(logical_sb_block, blocksize);
 		bh = sb_bread(sb, logical_sb_block);
+
 		if (!bh) {
+             #ifdef CONFIG_HUAWEI_FS_DSM
+	         if(!dsm_client_ocuppy(fs_dclient))
+	         {	
+	 	         dsm_client_record(fs_dclient,"EXT4-fs(%s):Can't read superblock on 2nd try\n",sb->s_id);
+		         dsm_client_notify(fs_dclient, DSM_FS_EXT4_ERROR_READ_SUPER_SECOND);
+	         }
+            #endif
 			ext4_msg(sb, KERN_ERR,
 			       "Can't read superblock on 2nd try");
 			goto failed_mount;
@@ -4056,6 +4190,9 @@ no_journal:
 	if (es->s_error_count)
 		mod_timer(&sbi->s_err_report, jiffies + 300*HZ); /* 5 minutes */
 
+	if (is_ext4_fs_dirty(sb))
+		dump_ext4_sb_info(sb);
+
 	kfree(orig_data);
 	return 0;
 
@@ -4428,6 +4565,15 @@ static int ext4_commit_super(struct super_block *sb, int sync)
 
 		error = buffer_write_io_error(sbh);
 		if (error) {
+#ifdef CONFIG_HUAWEI_FS_DSM
+	       if(!dsm_client_ocuppy(fs_dclient))
+	       {	
+	 	      dsm_client_record(fs_dclient,"EXT4-fs(%s):I/O error while writing superblock\n",sb->s_id);
+		      dsm_client_notify(fs_dclient, DSM_FS_EXT4_ERROR_WRITE_SUPER);
+	       }
+#endif
+			
+		
 			ext4_msg(sb, KERN_ERR, "I/O error while writing "
 			       "superblock");
 			clear_buffer_write_io_error(sbh);
@@ -4622,6 +4768,8 @@ static int ext4_remount(struct super_block *sb, int *flags, char *data)
 	int i, j;
 #endif
 	char *orig_data = kstrdup(data, GFP_KERNEL);
+
+	sync_filesystem(sb);
 
 	/* Store the original options */
 	old_sb_flags = sb->s_flags;
@@ -5387,7 +5535,13 @@ static int __init ext4_init_fs(void)
 	err = register_filesystem(&ext4_fs_type);
 	if (err)
 		goto out;
-
+#ifdef CONFIG_HUAWEI_FS_DSM
+	if(!fs_dclient)
+	{
+	  fs_dclient = dsm_register_client(&dsm_fs);
+	}
+#endif
+	
 	return 0;
 out:
 	unregister_as_ext2();

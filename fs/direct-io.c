@@ -366,6 +366,7 @@ dio_bio_alloc(struct dio *dio, struct dio_submit *sdio,
  *
  * bios hold a dio reference between submit_bio and ->end_io.
  */
+unsigned int bi_directio_flag=0; /*1: directio, other: buffer */
 static inline void dio_bio_submit(struct dio *dio, struct dio_submit *sdio)
 {
 	struct bio *bio = sdio->bio;
@@ -380,11 +381,13 @@ static inline void dio_bio_submit(struct dio *dio, struct dio_submit *sdio)
 	if (dio->is_async && dio->rw == READ)
 		bio_set_pages_dirty(bio);
 
+	bi_directio_flag = 1;
 	if (sdio->submit_io)
 		sdio->submit_io(dio->rw, bio, dio->inode,
 			       sdio->logical_offset_in_bio);
 	else
 		submit_bio(dio->rw, bio);
+	bi_directio_flag = 0;
 
 	sdio->bio = NULL;
 	sdio->boundary = 0;

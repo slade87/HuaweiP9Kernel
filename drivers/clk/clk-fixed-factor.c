@@ -12,7 +12,14 @@
 #include <linux/slab.h>
 #include <linux/err.h>
 #include <linux/of.h>
+#ifdef CONFIG_HISI_CLK
+#include <linux/clkdev.h>
+#endif
 
+
+
+
+extern int IS_FPGA(void);
 /*
  * DOC: basic fixed multiplier and divider clock that cannot gate
  *
@@ -97,6 +104,8 @@ struct clk *clk_register_fixed_factor(struct device *dev, const char *name,
 
 	return clk;
 }
+EXPORT_SYMBOL_GPL(clk_register_fixed_factor);
+
 #ifdef CONFIG_OF
 /**
  * of_fixed_factor_clk_setup() - Setup function for simple fixed factor clock
@@ -121,12 +130,31 @@ void __init of_fixed_factor_clk_setup(struct device_node *node)
 	}
 
 	of_property_read_string(node, "clock-output-names", &clk_name);
-	parent_name = of_clk_get_parent_name(node, 0);
+#ifdef CONFIG_HISI_CLK
+	if (IS_FPGA()){
+                if(NULL != of_find_property(node, "clock-fpga", NULL)){
+                        if (of_property_read_string(node, "clock-fpga", &parent_name)){
+                                pr_err("[%s] %s node clock-fpga value is NULL!\n",
+                                        __func__, node->name);
+                                return;
+                        }
+                }else{
+                         parent_name= of_clk_get_parent_name(node, 0);
+		}
+        }else{
+#endif
+                parent_name= of_clk_get_parent_name(node, 0);
+#ifdef CONFIG_HISI_CLK
+        }
+#endif
 
-	clk = clk_register_fixed_factor(NULL, clk_name, parent_name, 0,
+	clk = clk_register_fixed_factor(NULL, clk_name, parent_name, CLK_SET_RATE_PARENT,
 					mult, div);
 	if (!IS_ERR(clk))
 		of_clk_add_provider(node, of_clk_src_simple_get, clk);
+#ifdef CONFIG_HISI_CLK
+	clk_register_clkdev(clk, clk_name, NULL);
+#endif
 }
 EXPORT_SYMBOL_GPL(of_fixed_factor_clk_setup);
 CLK_OF_DECLARE(fixed_factor_clk, "fixed-factor-clock",

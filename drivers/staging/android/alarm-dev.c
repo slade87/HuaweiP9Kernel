@@ -23,6 +23,7 @@
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
 #include <linux/alarmtimer.h>
+#include <linux/rtc.h>
 #include "android_alarm.h"
 
 #define ANDROID_ALARM_PRINT_INFO (1U << 0)
@@ -30,6 +31,7 @@
 #define ANDROID_ALARM_PRINT_INT (1U << 2)
 
 static int debug_mask = ANDROID_ALARM_PRINT_INFO;
+struct rtc_wkalrm poweroff_rtc_alarm = {0,0,{0}};
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 #define alarm_dbg(debug_level_mask, fmt, ...)				\
@@ -60,6 +62,7 @@ struct devalarm {
 
 static struct devalarm alarms[ANDROID_ALARM_TYPE_COUNT];
 
+#define ALARM_AHEAD_TIME    (60)
 
 static int is_wakeup(enum android_alarm_type type)
 {
@@ -196,6 +199,54 @@ static int alarm_get_time(enum android_alarm_type alarm_type,
 	return rv;
 }
 
+static int alarm_set_rtc_alarm(long time_sec, bool enable_irq)
+{
+	struct timespec tmp_time = {0};
+	struct rtc_time rtc_current_rtc_time = {0};
+	unsigned long rtc_current_time = 0;
+	unsigned long offset = 0;
+	unsigned long alarm_value = 0;
+	/* remove rtc alarm */
+	if (time_sec == 0) {
+		printk(KERN_DEBUG "%s(): remove rtc alarm\n", __FUNCTION__);
+		/* set current as alarm time, and turn off the irq */
+		rtc_time_to_tm(rtc_current_time, &poweroff_rtc_alarm.time);
+		poweroff_rtc_alarm.enabled = 0;
+		hisi_pmu_rtc_setalarmtime(0);
+		return 0;
+	}
+	getnstimeofday(&tmp_time);
+	hisi_pmu_rtc_readtime(&rtc_current_rtc_time);
+	rtc_tm_to_time(&rtc_current_rtc_time, &rtc_current_time);
+	
+	/* get offset if system utc time does not equal rtc time */
+	offset = tmp_time.tv_sec - rtc_current_time;
+	/* printk(KERN_INFO "%ld - %ld = %ld\n", */
+	/*        tmp_time.tv_sec, rtc_current_time, offset); */
+	
+	memset(&poweroff_rtc_alarm, 0, sizeof(poweroff_rtc_alarm));
+	alarm_value = time_sec - offset;
+	if (alarm_value < (ALARM_AHEAD_TIME + rtc_current_time)) {
+		printk(KERN_DEBUG "%s(): remove rtc alarm\n", __FUNCTION__);
+		hisi_pmu_rtc_setalarmtime(0);
+		return 0;
+	}
+	
+	alarm_value -= ALARM_AHEAD_TIME;
+	rtc_time_to_tm(alarm_value, &poweroff_rtc_alarm.time);	
+	poweroff_rtc_alarm.enabled = (enable_irq == true ? 1 : 0);
+	printk(KERN_DEBUG "%s: [%d-%d-%d] [%d:%d:%d] %lu\n", __FUNCTION__,
+		poweroff_rtc_alarm.time.tm_year + 1900,
+		poweroff_rtc_alarm.time.tm_mon + 1,
+		poweroff_rtc_alarm.time.tm_mday,	
+		poweroff_rtc_alarm.time.tm_hour,
+		poweroff_rtc_alarm.time.tm_min,
+		poweroff_rtc_alarm.time.tm_sec,
+		alarm_value);
+	hisi_pmu_rtc_setalarmtime(alarm_value);
+	return 0;
+}
+
 static long alarm_do_ioctl(struct file *file, unsigned int cmd,
 							struct timespec *ts)
 {
@@ -223,6 +274,9 @@ static long alarm_do_ioctl(struct file *file, unsigned int cmd,
 	}
 
 	switch (ANDROID_ALARM_BASE_CMD(cmd)) {
+	case ANDROID_RTC_ALARM_SET:  /* add for poweroff alarm */
+		rv = alarm_set_rtc_alarm(ts->tv_sec, true);
+		break;
 	case ANDROID_ALARM_CLEAR(0):
 		alarm_clear(alarm_type);
 		break;
@@ -261,6 +315,10 @@ static long alarm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		if (copy_from_user(&ts, (void __user *)arg, sizeof(ts)))
 			return -EFAULT;
 		break;
+	case ANDROID_RTC_ALARM_SET:
+		if (copy_from_user(&ts, (void __user *)arg, sizeof(ts)))
+			return -EFAULT;
+		break;
 	}
 
 	rv = alarm_do_ioctl(file, cmd, &ts);
@@ -285,6 +343,7 @@ static long alarm_compat_ioctl(struct file *file, unsigned int cmd,
 	int rv;
 
 	switch (ANDROID_ALARM_BASE_CMD(cmd)) {
+	case ANDROID_RTC_ALARM_SET_COMPAT:
 	case ANDROID_ALARM_SET_AND_WAIT_COMPAT(0):
 	case ANDROID_ALARM_SET_COMPAT(0):
 	case ANDROID_ALARM_SET_RTC_COMPAT:

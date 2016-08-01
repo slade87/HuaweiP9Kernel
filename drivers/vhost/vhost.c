@@ -80,8 +80,7 @@ void vhost_poll_init(struct vhost_poll *poll, vhost_work_fn_t fn,
 	vhost_work_init(&poll->work, fn);
 }
 
-/* Start polling a file. We add ourselves to file's wait queue. The caller must
- * keep a reference to a file until after vhost_poll_stop is called. */
+
 int vhost_poll_start(struct vhost_poll *poll, struct file *file)
 {
 	unsigned long mask;
@@ -855,7 +854,6 @@ long vhost_dev_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp)
 		}
 		if (eventfp != d->log_file) {
 			filep = d->log_file;
-			d->log_file = eventfp;
 			ctx = d->log_ctx;
 			d->log_ctx = eventfp ?
 				eventfd_ctx_fileget(eventfp) : NULL;

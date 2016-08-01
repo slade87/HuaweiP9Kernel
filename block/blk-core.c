@@ -31,6 +31,7 @@
 #include <linux/delay.h>
 #include <linux/ratelimit.h>
 #include <linux/pm_runtime.h>
+#include <check_root.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/block.h>
@@ -38,6 +39,20 @@
 #include "blk.h"
 #include "blk-cgroup.h"
 
+#include <linux/mmc/mmc.h>
+
+#ifdef CONFIG_HISI_BLOCK_FREQUENCE_CONTROL
+#include "hisi_freq_ctl.h"
+#endif
+
+#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+#ifdef CONFIG_HW_FEATURE_STORAGE_DIAGNOSE_LOG
+#include <linux/store_log.h>
+#endif
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+#include <linux/mmc/dsm_emmc.h>
+#endif
+#endif
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_remap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_remap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_complete);
@@ -59,6 +74,15 @@ struct kmem_cache *blk_requestq_cachep;
  * Controlling structure to kblockd
  */
 static struct workqueue_struct *kblockd_workqueue;
+#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+/*  system write protect flag, 0: disable(default) 1:enable */
+static volatile int *ro_secure_debuggable = NULL;
+/*  system partition number is platform dependent, MUST change it according to platform */
+#define PART_SYSTEM "system"
+#define PART_SYSTEM_LEN 6
+#endif
+
+extern char *getfullpath(struct inode *inod,char* buffer,int len);
 
 static void drive_stat_acct(struct request *rq, int new_io)
 {
@@ -174,7 +198,7 @@ void blk_dump_rq_flags(struct request *rq, char *msg)
 {
 	int bit;
 
-	printk(KERN_INFO "%s: dev %s: type=%x, flags=%x\n", msg,
+	printk(KERN_INFO "%s: dev %s: type=%x, flags=%llx\n", msg,
 		rq->rq_disk ? rq->rq_disk->disk_name : "?", rq->cmd_type,
 		rq->cmd_flags);
 
@@ -295,6 +319,13 @@ EXPORT_SYMBOL(blk_sync_queue);
  *    This variant runs the queue whether or not the queue has been
  *    stopped. Must be called with the queue lock held and interrupts
  *    disabled. See also @blk_run_queue.
+ *
+ *    Device driver will be notified of an urgent request
+ *    pending under the following conditions:
+ *    1. The driver and the current scheduler support urgent reques handling
+ *    2. There is an urgent request pending in the scheduler
+ *    3. There isn't already an urgent request in flight, meaning previously
+ *       notified urgent request completed (!q->notified_urgent)
  */
 inline void __blk_run_queue_uncond(struct request_queue *q)
 {
@@ -309,7 +340,16 @@ inline void __blk_run_queue_uncond(struct request_queue *q)
 	 * can wait until all these request_fn calls have finished.
 	 */
 	q->request_fn_active++;
-	q->request_fn(q);
+
+	if (!q->notified_urgent &&
+		q->elevator->type->ops.elevator_is_urgent_fn &&
+		q->urgent_request_fn &&
+		q->elevator->type->ops.elevator_is_urgent_fn(q)) {
+		q->notified_urgent = true;
+		q->urgent_request_fn(q);
+	} else
+		q->request_fn(q);
+
 	q->request_fn_active--;
 }
 
@@ -1193,6 +1233,29 @@ struct request *blk_make_request(struct request_queue *q, struct bio *bio,
 }
 EXPORT_SYMBOL(blk_make_request);
 
+static void __blk_put_back_rq(struct request_queue *q, struct request *rq)
+{
+	blk_delete_timer(rq);
+	blk_clear_rq_complete(rq);
+
+	if (blk_rq_tagged(rq))
+		blk_queue_end_tag(q, rq);
+
+	BUG_ON(blk_queued_rq(rq));
+
+	if (rq->cmd_flags & REQ_URGENT) {
+		/*
+		 * It's not compliant with the design to re-insert
+		 * urgent requests. We want to be able to track this
+		 * down.
+		 */
+		pr_debug("%s(): requeueing/reinserting an URGENT request",
+			__func__);
+		WARN_ON(!q->dispatched_urgent);
+		q->dispatched_urgent = false;
+	}
+}
+
 /**
  * blk_requeue_request - put a request back on queue
  * @q:		request queue where request should be inserted
@@ -1205,18 +1268,44 @@ EXPORT_SYMBOL(blk_make_request);
  */
 void blk_requeue_request(struct request_queue *q, struct request *rq)
 {
-	blk_delete_timer(rq);
-	blk_clear_rq_complete(rq);
+	__blk_put_back_rq(q, rq);
 	trace_block_rq_requeue(q, rq);
-
-	if (blk_rq_tagged(rq))
-		blk_queue_end_tag(q, rq);
-
-	BUG_ON(blk_queued_rq(rq));
-
 	elv_requeue_request(q, rq);
 }
 EXPORT_SYMBOL(blk_requeue_request);
+
+/**
+ * blk_reinsert_request() - Insert a request back to the scheduler
+ *  <at> q:		request queue
+ *  <at> rq:		request to be inserted
+ *
+ * This function inserts the request back to the scheduler as if
+ * it was never dispatched.
+ *
+ * Return: 0 on success, error code on fail
+ */
+int blk_reinsert_request(struct request_queue *q, struct request *rq)
+{
+	__blk_put_back_rq(q, rq);
+	return elv_reinsert_request(q, rq);
+}
+EXPORT_SYMBOL(blk_reinsert_request);
+
+/**
+ * blk_reinsert_req_sup() - check whether the scheduler supports
+ *          reinsertion of requests
+ *  <at> q:		request queue
+ *
+ * Returns true if the current scheduler supports reinserting
+ * request. False otherwise
+ */
+bool blk_reinsert_req_sup(struct request_queue *q)
+{
+	if (unlikely(!q))
+		return false;
+	return q->elevator->type->ops.elevator_reinsert_req_fn ? true : false;
+}
+EXPORT_SYMBOL(blk_reinsert_req_sup);
 
 static void add_acct_request(struct request_queue *q, struct request *rq,
 			     int where)
@@ -1235,6 +1324,12 @@ static void part_round_stats_single(int cpu, struct hd_struct *part,
 		__part_stat_add(cpu, part, time_in_queue,
 				part_in_flight(part) * (now - part->stamp));
 		__part_stat_add(cpu, part, io_ticks, (now - part->stamp));
+#ifdef CONFIG_HISI_BLOCK_FREQUENCE_CONTROL
+		hisi_blk_freq_request(FREQ_REQ_ADD,
+				part_in_flight(part) * (now - part->stamp));
+	} else {
+		hisi_blk_freq_request(FREQ_REQ_REMOVE, (now - part->stamp));
+#endif
 	}
 	part->stamp = now;
 }
@@ -1846,6 +1941,32 @@ void generic_make_request(struct bio *bio)
 }
 EXPORT_SYMBOL(generic_make_request);
 
+#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+int blk_set_ro_secure_debuggable(int state)
+{
+	*ro_secure_debuggable = state;
+	return 0;
+}
+EXPORT_SYMBOL(blk_set_ro_secure_debuggable);
+
+static char *get_bio_part_name(struct bio *bio)
+{
+	if (unlikely(!bio || !bio->bi_bdev ||
+			!bio->bi_bdev->bd_part ||
+			!bio->bi_bdev->bd_part->info ||
+			!bio->bi_bdev->bd_part->info->volname[0]))
+		return NULL;
+	return bio->bi_bdev->bd_part->info->volname;
+}
+
+static inline char *fastboot_lock_str(void)
+{
+	if (strstr(saved_command_line,"fblock=locked") || strstr(saved_command_line,"userlock=locked"))
+		return "locked";
+	else
+		return "unlock";
+}
+#endif
 /**
  * submit_bio - submit a bio to the block device layer for I/O
  * @rw: whether to %READ or %WRITE, or maybe to %READA (read ahead)
@@ -1856,8 +1977,12 @@ EXPORT_SYMBOL(generic_make_request);
  * interfaces; @bio must be presetup and ready for I/O.
  *
  */
+extern unsigned int bi_directio_flag;
 void submit_bio(int rw, struct bio *bio)
 {
+#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+	char *name;
+#endif
 	bio->bi_rw |= rw;
 
 	/*
@@ -1879,14 +2004,79 @@ void submit_bio(int rw, struct bio *bio)
 			count_vm_events(PGPGIN, count);
 		}
 
+#ifdef DCHECK_ROOT_FORCE
+        check_wrt(rw, bio);
+#endif
+
+#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+		if (rw & WRITE) {
+			name = get_bio_part_name(bio);
+
+			/*
+			 * runmode=factory:send write request to mmc driver.
+			 * bootmode=recovery:send write request to mmc driver.
+			 * partition is mounted ro: file system will block write request.
+			 * root user: send write request to mmc driver.
+			 */
+			if (unlikely(name && (strncmp(name, PART_SYSTEM, PART_SYSTEM_LEN) == 0) && (name[PART_SYSTEM_LEN] == '\0')) &&
+					*ro_secure_debuggable) {
+
+				pr_info("[HW]: eMMC protect driver built on %s @ %s, into printk\n", __DATE__, __TIME__);
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+       DSM_EMMC_LOG(NULL, DSM_SYSTEM_W_ERR, "[HW]:EXT4_ERR_CAPS:%s(%d)[Parent: %s(%d)]: %s block %Lu on %s (%u sectors) %d %s.\n",
+						current->comm, task_pid_nr(current), current->parent->comm,task_pid_nr(current->parent),
+						(rw & WRITE) ? "WRITE" : "READ",
+						(unsigned long long)bio->bi_sector,
+						name,
+						count,
+						*ro_secure_debuggable,
+						fastboot_lock_str());
+
+#endif
+				printk(KERN_DEBUG "[HW]:EXT4_ERR_CAPS:%s(%d)[Parent: %s(%d)]: %s block %Lu on %s (%u sectors) %d %s.\n",
+						current->comm, task_pid_nr(current), current->parent->comm,task_pid_nr(current->parent),
+						(rw & WRITE) ? "WRITE" : "READ",
+						(unsigned long long)bio->bi_sector,
+						name,
+						count,
+						*ro_secure_debuggable,
+						fastboot_lock_str());
+
+				bio_endio(bio, -EIO);
+				return;
+			}
+		}
+#endif
+
 		if (unlikely(block_dump)) {
 			char b[BDEVNAME_SIZE];
-			printk(KERN_DEBUG "%s(%d): %s block %Lu on %s (%u sectors)\n",
+			char tmp_buf[1024];
+			char *meta="META";
+			char *odirect="ODIRECT";
+			char *full_name="UNKNOW";
+			u32 inode=0x7FFFFFFF;
+
+			if(1==bi_directio_flag){
+				full_name = odirect;
+			}else{
+				/* print file name related with bio */
+				if((bio->bi_io_vec)&&(bio->bi_io_vec->bv_page)
+					&&(bio->bi_io_vec->bv_page->mapping)
+					&&(!((unsigned long)bio->bi_io_vec->bv_page->mapping & PAGE_MAPPING_ANON))
+					&&(bio->bi_io_vec->bv_page->mapping->host)){
+						full_name=getfullpath(bio->bi_io_vec->bv_page->mapping->host,tmp_buf,sizeof(tmp_buf));
+						inode=bio->bi_io_vec->bv_page->mapping->host->i_ino;
+						if(NULL == full_name){
+							full_name = meta;
+						}	
+				}
+			}
+			printk(KERN_DEBUG "%s(%d): %s block %Lu on %s (%u sectors) inode(%d) name(%s)\n",
 			current->comm, task_pid_nr(current),
 				(rw & WRITE) ? "WRITE" : "READ",
 				(unsigned long long)bio->bi_sector,
 				bdevname(bio->bi_bdev, b),
-				count);
+				count, inode, full_name);
 		}
 	}
 
@@ -2130,6 +2320,10 @@ struct request *blk_peek_request(struct request_queue *q)
 			 * not be passed by new incoming requests
 			 */
 			rq->cmd_flags |= REQ_STARTED;
+			if (rq->cmd_flags & REQ_URGENT) {
+				WARN_ON(q->dispatched_urgent);
+				q->dispatched_urgent = true;
+			}
 			trace_block_rq_issue(q, rq);
 		}
 
@@ -2331,10 +2525,12 @@ bool blk_update_request(struct request *req, int error, unsigned int nr_bytes)
 			error_type = "I/O";
 			break;
 		}
+#if 0
 		printk_ratelimited(KERN_ERR "end_request: %s error, dev %s, sector %llu\n",
 				   error_type, req->rq_disk ?
 				   req->rq_disk->disk_name : "?",
 				   (unsigned long long)blk_rq_pos(req));
+#endif
 
 	}
 
@@ -3007,7 +3203,7 @@ void blk_flush_plug_list(struct blk_plug *plug, bool from_schedule)
 		/*
 		 * Short-circuit if @q is dead
 		 */
-		if (unlikely(blk_queue_dying(q))) {
+		if (unlikely(blk_queue_dying(q))) {/* [false alarm] */
 			__blk_end_request_all(rq, -ENODEV);
 			continue;
 		}
@@ -3191,7 +3387,8 @@ int __init blk_dev_init(void)
 
 	/* used for unplugging and affects IO latency/throughput - HIGHPRI */
 	kblockd_workqueue = alloc_workqueue("kblockd",
-					    WQ_MEM_RECLAIM | WQ_HIGHPRI, 0);
+					    WQ_MEM_RECLAIM | WQ_HIGHPRI |
+					    WQ_POWER_EFFICIENT, 0);
 	if (!kblockd_workqueue)
 		panic("Failed to create kblockd\n");
 
@@ -3201,5 +3398,27 @@ int __init blk_dev_init(void)
 	blk_requestq_cachep = kmem_cache_create("blkdev_queue",
 			sizeof(struct request_queue), 0, SLAB_PANIC, NULL);
 
+#ifdef CONFIG_HISI_BLOCK_FREQUENCE_CONTROL
+	hisi_blk_freq_ctrl_init();
+#endif
+
 	return 0;
 }
+
+#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+#define PADDING_MAX (10)
+int __init ro_secure_debuggable_init(void)
+{
+	static int ro_secure_debuggable_static = 0;
+	char *padding = NULL;
+	size_t padding_size;
+	unsigned int rand;
+
+	ro_secure_debuggable = kzalloc(sizeof(int), GFP_KERNEL);
+	if (!ro_secure_debuggable)
+		ro_secure_debuggable = &ro_secure_debuggable_static;
+
+	return 0;
+}
+late_initcall(ro_secure_debuggable_init);
+#endif

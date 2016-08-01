@@ -6,34 +6,14 @@
  * Authors: Felipe Balbi <balbi@ti.com>,
  *	    Sebastian Andrzej Siewior <bigeasy@linutronix.de>
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions, and the following disclaimer,
- *    without modification.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The names of the above-listed copyright holders may not be used
- *    to endorse or promote products derived from this software without
- *    specific prior written permission.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2  of
+ * the License as published by the Free Software Foundation.
  *
- * ALTERNATIVELY, this software may be distributed under the terms of the
- * GNU General Public License ("GPL") version 2, as published by the Free
- * Software Foundation.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
- * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #ifndef __DRIVERS_USB_DWC3_CORE_H
@@ -49,14 +29,17 @@
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
+#include <linux/usb/otg.h>
 
 /* Global constants */
-#define DWC3_EP0_BOUNCE_SIZE	512
+#define DWC3_IP_VERSION		(0x55330000)
+#define DWC3_EP0_BOUNCE_SIZE	1024
 #define DWC3_ENDPOINTS_NUM	32
 #define DWC3_XHCI_RESOURCES_NUM	2
+#define DWC3_EP0_TRB_NUM	2
 
 #define DWC3_EVENT_SIZE		4	/* bytes */
-#define DWC3_EVENT_MAX_NUM	64	/* 2 events/endpoint */
+#define DWC3_EVENT_MAX_NUM	256	/* 8 events/endpoint */
 #define DWC3_EVENT_BUFFERS_SIZE	(DWC3_EVENT_SIZE * DWC3_EVENT_MAX_NUM)
 #define DWC3_EVENT_TYPE_MASK	0xfe
 
@@ -70,7 +53,8 @@
 #define DWC3_DEVICE_EVENT_LINK_STATUS_CHANGE	3
 #define DWC3_DEVICE_EVENT_WAKEUP		4
 #define DWC3_DEVICE_EVENT_HIBER_REQ		5
-#define DWC3_DEVICE_EVENT_EOPF			6
+#define DWC3_DEVICE_EVENT_EOPF                 6
+#define DWC3_DEVICE_EVENT_SUSPEND_ENTRY			6
 #define DWC3_DEVICE_EVENT_SOF			7
 #define DWC3_DEVICE_EVENT_ERRATIC_ERROR		9
 #define DWC3_DEVICE_EVENT_CMD_CMPL		10
@@ -158,6 +142,11 @@
 #define DWC3_OEVTEN		0xcc0C
 #define DWC3_OSTS		0xcc10
 
+/* BC Registers */
+#define DWC3_BCFG		0xcc30
+#define DWC3_BCEVT		0xcc38
+#define DWC3_BCEVTEN	0xcc3c
+
 /* Bit fields */
 
 /* Global Configuration Register */
@@ -182,17 +171,37 @@
 #define DWC3_GCTL_GBLHIBERNATIONEN	(1 << 1)
 #define DWC3_GCTL_DSBLCLKGTNG		(1 << 0)
 
+/* Global Status Register */
+#define DWC3_GSTS_SSIC_IP		(1 << 11)
+#define DWC3_GSTS_OTG_IP		(1 << 10)
+#define DWC3_GSTS_BC_IP			(1 << 9)
+#define DWC3_GSTS_ADP_IP		(1 << 8)
+#define DWC3_GSTS_HOST_IP		(1 << 7)
+#define DWC3_GSTS_DEVICE_IP		(1 << 6)
+#define DWC3_GSTS_CSR_TIMEOUT		(1 << 5)
+#define DWC3_GSTS_BUSERRADDRVLD		(1 << 4)
+#define DWC3_GSTS_CURMOD_MSK		(3 << 0)
+
 /* Global USB2 PHY Configuration Register */
 #define DWC3_GUSB2PHYCFG_PHYSOFTRST	(1 << 31)
+#define DWC3_GUSB2PHYCFG_USBTRDTIM(n)	((n) << 10)
+#define DWC3_GUSB2PHYCFG_USBTRDTIM_MASK	DWC3_GUSB2PHYCFG_USBTRDTIM(0xf)
 #define DWC3_GUSB2PHYCFG_SUSPHY		(1 << 6)
 
 /* Global USB3 PIPE Control Register */
 #define DWC3_GUSB3PIPECTL_PHYSOFTRST	(1 << 31)
+#define DWC3_GUSB3PIPECTL_DELAYP1TRANS	(1 << 18)
 #define DWC3_GUSB3PIPECTL_SUSPHY	(1 << 17)
+#define DWC3_GUSB3PIPECTL_LFPSFILT	(1 << 9)
+#define DWC3_GUSB3PIPECTL_TXDEEMPHASIS	(1 << 1)
 
 /* Global TX Fifo Size Register */
 #define DWC3_GTXFIFOSIZ_TXFDEF(n)	((n) & 0xffff)
 #define DWC3_GTXFIFOSIZ_TXFSTADDR(n)	((n) & 0xffff0000)
+
+/* Global Event Size Registers */
+#define DWC3_GEVNTSIZ_INTMASK		(1 << 31)
+#define DWC3_GEVNTSIZ_SIZE(n)		((n) & 0xffff)
 
 /* Global HWPARAMS1 Register */
 #define DWC3_GHWPARAMS1_EN_PWROPT(n)	(((n) & (3 << 24)) >> 24)
@@ -206,8 +215,16 @@
 #define DWC3_GHWPARAMS4_HIBER_SCRATCHBUFS(n)	(((n) & (0x0f << 13)) >> 13)
 #define DWC3_MAX_HIBER_SCRATCHBUFS		15
 
+/* Global HWPARAMS6 Register */
+#define  DWC3_RAM0_DEPTH_MASK		(0xffff << 16)
+#define  DWC3_EN_BUS_FILTERS		(1 << 15)
+#define  DWC3_EN_BC			(1 << 14)
+#define  DWC3_OTG_SS_SUPPORT		(1 << 13)
+#define  DWC3_ADPSUPPORT		(1 << 12)
+#define  DWC3_HNPSUPPORT		(1 << 11)
+#define  DWC3_SRPSUPPORT		(1 << 10)
+
 /* Device Configuration Register */
-#define DWC3_DCFG_LPM_CAP	(1 << 22)
 #define DWC3_DCFG_DEVADDR(addr)	((addr) << 3)
 #define DWC3_DCFG_DEVADDR_MASK	DWC3_DCFG_DEVADDR(0x7f)
 
@@ -268,7 +285,7 @@
 #define DWC3_DEVTEN_CMDCMPLTEN		(1 << 10)
 #define DWC3_DEVTEN_ERRTICERREN		(1 << 9)
 #define DWC3_DEVTEN_SOFEN		(1 << 7)
-#define DWC3_DEVTEN_EOPFEN		(1 << 6)
+#define DWC3_DEVTEN_U3L2L1SUSPEN	(1 << 6)
 #define DWC3_DEVTEN_HIBERNATIONREQEVTEN	(1 << 5)
 #define DWC3_DEVTEN_WKUPEVTEN		(1 << 4)
 #define DWC3_DEVTEN_ULSTCNGEN		(1 << 3)
@@ -335,7 +352,9 @@
 #define DWC3_DEPCMD_PARAM_SHIFT		16
 #define DWC3_DEPCMD_PARAM(x)		((x) << DWC3_DEPCMD_PARAM_SHIFT)
 #define DWC3_DEPCMD_GET_RSC_IDX(x)     (((x) >> DWC3_DEPCMD_PARAM_SHIFT) & 0x7f)
-#define DWC3_DEPCMD_STATUS(x)		(((x) >> 15) & 1)
+#define DWC3_DEPCMD_STATUS_SHIFT	12
+#define DWC3_DEPCMD_STATUS(x)		((x) << DWC3_DEPCMD_STATUS_SHIFT)
+#define DWC3_DEPCMD_GET_STATUS(x)	(((x) >> DWC3_DEPCMD_STATUS_SHIFT) & 0xf)
 #define DWC3_DEPCMD_HIPRI_FORCERM	(1 << 11)
 #define DWC3_DEPCMD_CMDACT		(1 << 10)
 #define DWC3_DEPCMD_CMDIOC		(1 << 8)
@@ -361,13 +380,56 @@
 #define DWC3_DEPCMD_TYPE_BULK		2
 #define DWC3_DEPCMD_TYPE_INTR		3
 
+/* OTG Configuration Register */
+#define DWC3_OCFG_DISPRTPWRCUTOFF	(1 << 5)
+#define DWC3_OCFG_OTGHIBDISMASK		(1 << 4)
+#define DWC3_OCFG_OTGSFTRSTMSK		(1 << 3)
+#define DWC3_OCFG_HNPCAP		(1 << 1)
+#define DWC3_OCFG_SRPCAP		1
+
+/* OTG Control Register */
+#define	DWC3_OCTL_OTG3_GOERR		(1 << 7)
+#define	DWC3_OCTL_PERIMODE		(1 << 6)
+#define	DWC3_OCTL_PRTPWRCTL		(1 << 5)
+#define	DWC3_OCTL_HNPREQ		(1 << 4)
+#define	DWC3_OCTL_SESREQ		(1 << 3)
+#define	DWC3_OCTL_TERMSELDLPULSE	(1 << 2)
+#define	DWC3_OCTL_DEVSETHNPEN		(1 << 1)
+#define	DWC3_OCTL_HSTSETHNPEN		(1 << 0)
+
+/* OTG Events Register */
+#define DWC3_OEVT_DEVICEMOD			(1 << 31)
+#define DWC3_OEVT_OTGXHCIRUNSTPSETEVNT		(1 << 27)
+#define DWC3_OEVT_OTGDEVRUNSTPSETEVNT		(1 << 26)
+#define DWC3_OEVT_OTGHIBENTRYEVNT		(1 << 25)
+#define DWC3_OEVT_OTGCONIDSTSCHNGEVNT		(1 << 24)
+#define DWC3_OEVT_HRRCONFNOTIFEVNT		(1 << 23)
+#define DWC3_OEVT_HRRINITNOTIFEVNT		(1 << 22)
+#define DWC3_OEVT_OTGADEVIDLEEVNT		(1 << 21)
+#define DWC3_OEVT_OTGADEVBHOSTENDEVNT		(1 << 20)
+#define DWC3_OEVT_OTGADEVHOSTEVNT		(1 << 19)
+#define DWC3_OEVT_OTGADEVHNPCHNGEVNT		(1 << 18)
+#define DWC3_OEVT_OTGADEVSRPDETEVNT		(1 << 17)
+#define DWC3_OEVT_OTGADEVSESSENDDETEVNT		(1 << 16)
+#define DWC3_OEVT_OTGBDEVBHOSTENDEVNT		(1 << 11)
+#define DWC3_OEVT_OTGBDEVHNPCHNGEVNT		(1 << 10)
+#define DWC3_OEVT_OTGBDEVSESSVLDDETEVNT		(1 << 9)
+#define DWC3_OEVT_OTGBDEVVBUSCHNGEVNT		(1 << 8)
+
+/* OTG Status Register */
+#define DWC3_OSTS_OTGSTATE_MSK          (0xf << 8)
+#define DWC3_OSTS_PERIPHERALSTATE       (1 << 4)
+#define DWC3_OSTS_XHCIPRTPOWER          (1 << 3)
+#define DWC3_OSTS_BSESVLD               (1 << 2)
+#define DWC3_OSTS_ASESVLD               (1 << 1)
+#define DWC3_OSTS_CONIDSTS              (1 << 0)
+
 /* Structures */
 
 struct dwc3_trb;
 
 /**
  * struct dwc3_event_buffer - Software event buffer representation
- * @list: a list of event buffers
  * @buf: _THE_ buffer
  * @length: size of this buffer
  * @lpos: event offset
@@ -415,7 +477,7 @@ struct dwc3_event_buffer {
  * @number: endpoint number (1 - 15)
  * @type: set to bmAttributes & USB_ENDPOINT_XFERTYPE_MASK
  * @resource_index: Resource transfer index
- * @interval: the intervall on which the ISOC transfer is started
+ * @interval: the interval on which the ISOC transfer is started
  * @name: a human readable name e.g. ep1out-bulk
  * @direction: true for TX, false for RX
  * @stream_capable: true when streams are enabled
@@ -566,11 +628,6 @@ struct dwc3_hwparams {
 /* HWPARAMS0 */
 #define DWC3_MODE(n)		((n) & 0x7)
 
-#define DWC3_MODE_DEVICE	0
-#define DWC3_MODE_HOST		1
-#define DWC3_MODE_DRD		2
-#define DWC3_MODE_HUB		3
-
 #define DWC3_MDWIDTH(n)		(((n) & 0xff00) >> 8)
 
 /* HWPARAMS1 */
@@ -600,6 +657,7 @@ struct dwc3_request {
 	unsigned		direction:1;
 	unsigned		mapped:1;
 	unsigned		queued:1;
+	unsigned		send_zlp:1;
 };
 
 /*
@@ -609,6 +667,8 @@ struct dwc3_request {
 struct dwc3_scratchpad_array {
 	__le64	dma_adr[DWC3_MAX_HIBER_SCRATCHBUFS];
 };
+
+struct dwc3_otg;
 
 /**
  * struct dwc3 - representation of our controller
@@ -632,7 +692,7 @@ struct dwc3_scratchpad_array {
  * @u1u2: only used on revisions <1.83a for workaround
  * @maximum_speed: maximum speed requested (mainly for testing purposes)
  * @revision: revision register contents
- * @mode: mode of operation
+ * @dr_mode: requested mode of operation
  * @usb2_phy: pointer to USB2 PHY
  * @usb3_phy: pointer to USB3 PHY
  * @dcfg: saved contents of DCFG register
@@ -690,6 +750,8 @@ struct dwc3 {
 	void __iomem		*regs;
 	size_t			regs_size;
 
+	enum usb_dr_mode	dr_mode;
+
 	/* used for suspend/resume */
 	u32			dcfg;
 	u32			gctl;
@@ -698,7 +760,6 @@ struct dwc3 {
 	u32			u1u2;
 	u32			maximum_speed;
 	u32			revision;
-	u32			mode;
 
 #define DWC3_REVISION_173A	0x5533173a
 #define DWC3_REVISION_175A	0x5533175a
@@ -724,9 +785,14 @@ struct dwc3 {
 	unsigned		start_config_issued:1;
 	unsigned		setup_packet_pending:1;
 	unsigned		delayed_status:1;
+	unsigned		status_queued:1; 	/* the delayed status may come before notready interrupt,
+							 * in this case, don't wait for delayed status */
 	unsigned		needs_fifo_resize:1;
 	unsigned		resize_fifos:1;
 	unsigned		pullups_connected:1;
+
+	unsigned		gadget_pullup:1;
+	unsigned		pcd_suspended:1;
 
 	enum dwc3_ep0_next	ep0_next_event;
 	enum dwc3_ep0_state	ep0state;
@@ -751,6 +817,10 @@ struct dwc3 {
 
 	u8			test_mode;
 	u8			test_mode_nr;
+
+	struct dwc3_otg *dwc_otg;
+	int			irq;
+	struct tasklet_struct	bh;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -877,6 +947,19 @@ union dwc3_event {
 	struct dwc3_event_gevt		gevt;
 };
 
+/**
+ * struct dwc3_gadget_ep_cmd_params - representation of endpoint command
+ * parameters
+ * @param2: third parameter
+ * @param1: second parameter
+ * @param0: first parameter
+ */
+struct dwc3_gadget_ep_cmd_params {
+	u32	param2;
+	u32	param1;
+	u32	param0;
+};
+
 /*
  * DWC3 Features to be used as Driver Data
  */
@@ -888,6 +971,8 @@ union dwc3_event {
 /* prototypes */
 void dwc3_set_mode(struct dwc3 *dwc, u32 mode);
 int dwc3_gadget_resize_tx_fifos(struct dwc3 *dwc);
+int dwc3_core_init(struct dwc3 *dwc);
+int dwc3_event_buffers_setup(struct dwc3 *dwc);
 
 #if IS_ENABLED(CONFIG_USB_DWC3_HOST) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
 int dwc3_host_init(struct dwc3 *dwc);
@@ -902,11 +987,41 @@ static inline void dwc3_host_exit(struct dwc3 *dwc)
 #if IS_ENABLED(CONFIG_USB_DWC3_GADGET) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
 int dwc3_gadget_init(struct dwc3 *dwc);
 void dwc3_gadget_exit(struct dwc3 *dwc);
+
+void dwc3_resume_usb2_phy(struct dwc3 *dwc);
+void dwc3_resume_usb3_phy(struct dwc3 *dwc);
+
+int dwc3_gadget_set_test_mode(struct dwc3 *dwc, int mode);
+int dwc3_gadget_get_link_state(struct dwc3 *dwc);
+int dwc3_gadget_set_link_state(struct dwc3 *dwc, enum dwc3_link_state state);
+int dwc3_send_gadget_ep_cmd(struct dwc3 *dwc, unsigned ep,
+		unsigned cmd, struct dwc3_gadget_ep_cmd_params *params);
+int dwc3_send_gadget_generic_command(struct dwc3 *dwc, int cmd, u32 param);
+int dwc3_conndone_notifier_register(struct notifier_block *nb);
+int dwc3_conndone_notifier_unregister(struct notifier_block *nb);
 #else
 static inline int dwc3_gadget_init(struct dwc3 *dwc)
 { return 0; }
 static inline void dwc3_gadget_exit(struct dwc3 *dwc)
 { }
+static inline int dwc3_gadget_set_test_mode(struct dwc3 *dwc, int mode)
+{ return 0; }
+static inline int dwc3_gadget_get_link_state(struct dwc3 *dwc)
+{ return 0; }
+static inline int dwc3_gadget_set_link_state(struct dwc3 *dwc,
+		enum dwc3_link_state state)
+{ return 0; }
+
+static inline int dwc3_send_gadget_ep_cmd(struct dwc3 *dwc, unsigned ep,
+		unsigned cmd, struct dwc3_gadget_ep_cmd_params *params)
+{ return 0; }
+static inline int dwc3_send_gadget_generic_command(struct dwc3 *dwc,
+		int cmd, u32 param)
+{ return 0; }
+static inline int dwc3_conndone_notifier_register(struct notifier_block *nb)
+{ return 0; }
+static inline int dwc3_conndone_notifier_unregister(struct notifier_block *nb)
+{ return 0; }
 #endif
 
 /* power management interface */
@@ -935,5 +1050,13 @@ static inline int dwc3_gadget_resume(struct dwc3 *dwc)
 	return 0;
 }
 #endif /* !IS_ENABLED(CONFIG_USB_DWC3_HOST) */
+
+#ifdef CONFIG_PM_RUNTIME
+int dwc3_resume_device(struct dwc3 *dwc);
+void dwc3_suspend_device(struct dwc3 *dwc);
+#else
+static inline int dwc3_resume_device(struct dwc3 *dwc) { return  0; };
+static inline void dwc3_suspend_device(struct dwc3 *dwc) {};
+#endif
 
 #endif /* __DRIVERS_USB_DWC3_CORE_H */

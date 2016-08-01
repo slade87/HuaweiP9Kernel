@@ -47,7 +47,7 @@
 
 /*---------------------  Static Classes  ----------------------------*/
 
-extern unsigned short TxRate_iwconfig; //2008-5-8 <add> by chester
+extern unsigned short TxRate_iwconfig;
 /*---------------------  Static Variables  --------------------------*/
 //static int          msglevel                =MSG_LEVEL_DEBUG;
 static int msglevel = MSG_LEVEL_INFO;
@@ -370,7 +370,6 @@ RATEvTxRateFallBack(
 		if (psNodeDBTable->uTxFail[MAX_RATE] == 0)
 			psNodeDBTable->wTxDataRate = wIdxUpRate;
 	}
-//2008-5-8 <add> by chester
 	TxRate_iwconfig = psNodeDBTable->wTxDataRate;
 	s_vResetCounter(psNodeDBTable);
 //    DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "Rate: %d, U:%d, D:%d\n", psNodeDBTable->wTxDataRate, wIdxUpRate, wIdxDownRate);

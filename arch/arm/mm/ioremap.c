@@ -39,7 +39,6 @@
 #include <asm/mach/pci.h>
 #include "mm.h"
 
-
 LIST_HEAD(static_vmlist);
 
 static struct static_vm *find_static_vm_paddr(phys_addr_t paddr,
@@ -298,7 +297,7 @@ void __iomem * __arm_ioremap_pfn_caller(unsigned long pfn,
 	/*
 	 * Don't allow RAM to be mapped - this causes problems with ARMv6+
 	 */
-	if (WARN_ON(pfn_valid(pfn)))
+	if ((WARN_ON(pfn_valid(pfn))))
 		return NULL;
 
 	area = get_vm_area_caller(size, VM_IOREMAP, caller);

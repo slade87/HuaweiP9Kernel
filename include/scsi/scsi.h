@@ -203,7 +203,7 @@ struct scsi_varlen_cdb_hdr {
 static inline unsigned
 scsi_varlen_cdb_length(const void *hdr)
 {
-	return ((struct scsi_varlen_cdb_hdr *)hdr)->additional_cdb_length + 8;
+	return (unsigned)(((struct scsi_varlen_cdb_hdr *)hdr)->additional_cdb_length + 8);
 }
 
 extern const unsigned char scsi_command_size_tbl[8];

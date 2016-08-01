@@ -152,7 +152,7 @@ int blk_rq_map_user(struct request_queue *q, struct request *rq,
 			map_data->offset += ret;
 	}
 
-	if (!bio_flagged(bio, BIO_USER_MAPPED))
+	if (!bio_flagged(bio, BIO_USER_MAPPED))/* [false alarm] */
 		rq->cmd_flags |= REQ_COPY_USER;
 
 	rq->buffer = NULL;

@@ -191,7 +191,6 @@ static int r8180_wx_set_mode(struct net_device *dev, struct iw_request_info *a,
 	return ret;
 }
 
-/* YJ,add,080819,for hidden ap */
 struct  iw_range_with_scan_capa	{
 		/* Informative stuff (to choose between different interface) */
 
@@ -215,7 +214,6 @@ struct  iw_range_with_scan_capa	{
 		/* Scan capabilities */
 		__u8			scan_capa;
 };
-/* YJ,add,080819,for hidden ap */
 
 
 static int rtl8180_wx_get_range(struct net_device *dev,
@@ -1055,7 +1053,6 @@ static int r8180_wx_get_version(struct net_device *dev,
 	return 0;
 }
 
-/* added by amy 080818 */
 /*receive datarate from user typing valid rate is from 2 to 108 (1 - 54M), if input 0, return to normal rate adaptive. */
 static int r8180_wx_set_forcerate(struct net_device *dev,
 			     struct iw_request_info *info,

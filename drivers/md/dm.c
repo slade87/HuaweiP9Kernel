@@ -21,6 +21,8 @@
 #include <linux/delay.h>
 
 #include <trace/events/block.h>
+#include<trace/iotrace.h>
+DEFINE_TRACE(block_dm_request);
 
 #define DM_MSG_PREFIX "core"
 
@@ -40,6 +42,7 @@ EXPORT_SYMBOL(dm_ratelimit_state);
  */
 #define DM_COOKIE_ENV_VAR_NAME "DM_COOKIE"
 #define DM_COOKIE_LENGTH 24
+#define BLK_BOUNCE_MASK  (0xFFFFFFFF)
 
 static const char *_name = DM_NAME;
 
@@ -1498,6 +1501,8 @@ static void dm_request(struct request_queue *q, struct bio *bio)
 {
 	struct mapped_device *md = q->queuedata;
 
+    trace_block_dm_request(q, bio);
+    
 	if (dm_request_based(md))
 		blk_queue_bio(q, bio);
 	else
@@ -1847,7 +1852,7 @@ static void dm_init_md_queue(struct mapped_device *md)
 	md->queue->backing_dev_info.congested_fn = dm_any_congested;
 	md->queue->backing_dev_info.congested_data = md;
 	blk_queue_make_request(md->queue, dm_request);
-	blk_queue_bounce_limit(md->queue, BLK_BOUNCE_ANY);
+	blk_queue_bounce_limit(md->queue, BLK_BOUNCE_MASK);
 	blk_queue_merge_bvec(md->queue, dm_merge_bvec);
 }
 
@@ -1915,8 +1920,7 @@ static struct mapped_device *alloc_dev(int minor)
 	add_disk(md->disk);
 	format_dev_t(md->name, MKDEV(_major, minor));
 
-	md->wq = alloc_workqueue("kdmflush",
-				 WQ_NON_REENTRANT | WQ_MEM_RECLAIM, 0);
+	md->wq = alloc_workqueue("kdmflush", WQ_MEM_RECLAIM, 0);
 	if (!md->wq)
 		goto bad_thread;
 
@@ -2701,7 +2705,7 @@ int dm_kobject_uevent(struct mapped_device *md, enum kobject_action action,
 
 uint32_t dm_next_uevent_seq(struct mapped_device *md)
 {
-	return atomic_add_return(1, &md->uevent_seq);
+	return atomic_add_return(1, &md->uevent_seq); /* [false alarm]:fortify */
 }
 
 uint32_t dm_get_event_nr(struct mapped_device *md)

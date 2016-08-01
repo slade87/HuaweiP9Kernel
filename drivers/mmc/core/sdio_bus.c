@@ -25,6 +25,11 @@
 #include "sdio_cis.h"
 #include "sdio_bus.h"
 
+#ifdef CONFIG_MMC_EMBEDDED_SDIO
+#include <linux/mmc/host.h>
+#endif
+
+#define to_sdio_driver(d)	container_of(d, struct sdio_driver, drv)
 /* show configuration fields */
 #define sdio_config_attr(field, format_string)				\
 static ssize_t								\
@@ -192,36 +197,15 @@ static int sdio_bus_remove(struct device *dev)
 	return ret;
 }
 
-#ifdef CONFIG_PM
-
-#ifdef CONFIG_PM_SLEEP
-static int pm_no_operation(struct device *dev)
-{
-	/*
-	 * Prevent the PM core from calling SDIO device drivers' suspend
-	 * callback routines, which it is not supposed to do, by using this
-	 * empty function as the bus type suspend callaback for SDIO.
-	 */
-	return 0;
-}
-#endif
 
 static const struct dev_pm_ops sdio_bus_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(pm_no_operation, pm_no_operation)
+	SET_SYSTEM_SLEEP_PM_OPS(pm_generic_suspend, pm_generic_resume)
 	SET_RUNTIME_PM_OPS(
 		pm_generic_runtime_suspend,
 		pm_generic_runtime_resume,
 		pm_generic_runtime_idle
 	)
 };
-
-#define SDIO_PM_OPS_PTR	(&sdio_bus_pm_ops)
-
-#else /* !CONFIG_PM */
-
-#define SDIO_PM_OPS_PTR	NULL
-
-#endif /* !CONFIG_PM */
 
 static struct bus_type sdio_bus_type = {
 	.name		= "sdio",
@@ -230,7 +214,7 @@ static struct bus_type sdio_bus_type = {
 	.uevent		= sdio_bus_uevent,
 	.probe		= sdio_bus_probe,
 	.remove		= sdio_bus_remove,
-	.pm		= SDIO_PM_OPS_PTR,
+	.pm		= &sdio_bus_pm_ops,
 };
 
 int sdio_register_bus(void)
@@ -270,7 +254,14 @@ static void sdio_release_func(struct device *dev)
 {
 	struct sdio_func *func = dev_to_sdio_func(dev);
 
-	sdio_free_func_cis(func);
+#ifdef CONFIG_MMC_EMBEDDED_SDIO
+	/*
+	 * If this device is embedded then we never allocated
+	 * cis tables for this func
+	 */
+	if (!func->card->host->embedded_sdio_data.funcs)
+#endif
+		sdio_free_func_cis(func);
 
 	kfree(func->info);
 
@@ -303,7 +294,7 @@ struct sdio_func *sdio_alloc_func(struct mmc_card *card)
 static void sdio_acpi_set_handle(struct sdio_func *func)
 {
 	struct mmc_host *host = func->card->host;
-	u64 addr = (host->slotno << 16) | func->num;
+	u64 addr = ((u64)host->slotno << 16) | func->num;
 
 	ACPI_HANDLE_SET(&func->dev,
 			acpi_get_child(ACPI_HANDLE(host->parent), addr));

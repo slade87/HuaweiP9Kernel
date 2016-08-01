@@ -504,6 +504,32 @@ static struct dma_chan *private_candidate(const dma_cap_mask_t *mask,
 }
 
 /**
+ * dma_request_channel - try to get specific channel exclusively
+ * @chan: target channel
+ */
+struct dma_chan *dma_get_slave_channel(struct dma_chan *chan)
+{
+	int err = -EBUSY;
+
+	/* lock against __dma_request_channel */
+	mutex_lock(&dma_list_mutex);
+
+	if (chan->client_count == 0)
+		err = dma_chan_get(chan);
+	else
+		chan = NULL;
+
+	mutex_unlock(&dma_list_mutex);
+
+	if (err)
+		pr_debug("%s: failed to get %s: (%d)\n",
+			__func__, dma_chan_name(chan), err);
+
+	return chan;
+}
+EXPORT_SYMBOL_GPL(dma_get_slave_channel);
+
+/**
  * dma_request_channel - try to allocate an exclusive channel
  * @mask: capabilities that the channel must satisfy
  * @fn: optional callback to disposition available channels
@@ -1067,7 +1093,7 @@ void dma_run_dependencies(struct dma_async_tx_descriptor *tx)
 
 	/* we'll submit tx->next now, so clear the link */
 	txd_clear_next(tx);
-	chan = dep->chan;
+	chan = dep->chan;/*[false alarm]*/
 
 	/* keep submitting up until a channel switch is detected
 	 * in that case we will be called again as a result of
@@ -1077,13 +1103,13 @@ void dma_run_dependencies(struct dma_async_tx_descriptor *tx)
 		txd_lock(dep);
 		txd_clear_parent(dep);
 		dep_next = txd_next(dep);
-		if (dep_next && dep_next->chan == chan)
+		if (dep_next && dep_next->chan == chan)/*[false alarm]*/
 			txd_clear_next(dep); /* ->next will be submitted */
 		else
 			dep_next = NULL; /* submit current dep and terminate */
 		txd_unlock(dep);
 
-		dep->tx_submit(dep);
+		dep->tx_submit(dep);/*[false alarm]*/
 	}
 
 	chan->device->device_issue_pending(chan);

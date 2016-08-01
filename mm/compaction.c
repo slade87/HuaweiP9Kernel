@@ -1089,7 +1089,7 @@ unsigned long try_to_compact_pages(struct zonelist *zonelist,
 	count_compact_event(COMPACTSTALL);
 
 #ifdef CONFIG_CMA
-	if (allocflags_to_migratetype(gfp_mask) == MIGRATE_MOVABLE)
+	if (gfp_mask & __GFP_CMA)
 		alloc_flags |= ALLOC_CMA;
 #endif
 	/* Compact each zone in the list */
@@ -1181,6 +1181,14 @@ static void compact_nodes(void)
 
 /* The written value is actually unused, all memory is compacted */
 int sysctl_compact_memory;
+#ifdef CONFIG_ARM64
+unsigned long sysctl_compact_memory_s;
+unsigned long sysctl_compact_memory_s_min;
+unsigned long sysctl_compact_memory_ratio;
+unsigned long sysctl_compact_memory_ratio_min;
+unsigned long sysctl_compact_memory_ratio_max;
+static struct delayed_work compact_work;
+#endif
 
 /* This is the entry point for compacting all nodes via /proc/sys/vm */
 int sysctl_compaction_handler(struct ctl_table *table, int write,
@@ -1199,6 +1207,49 @@ int sysctl_extfrag_handler(struct ctl_table *table, int write,
 
 	return 0;
 }
+
+#ifdef CONFIG_ARM64
+static void compact_memory_work(struct work_struct *w)
+{
+	struct delayed_work *work = to_delayed_work(w);
+	unsigned long free, total;
+
+	if (sysctl_compact_memory_s == 0) {
+		schedule_delayed_work(work, round_jiffies_relative(120 * HZ));
+		return;
+	}
+
+	free = global_page_state(NR_FREE_PAGES);
+	total = totalram_pages;
+
+	if (free <= total * sysctl_compact_memory_ratio / 100) {
+		drain_all_pages();
+		compact_nodes();
+	}
+
+	schedule_delayed_work(work,
+		round_jiffies_relative(sysctl_compact_memory_s * HZ));
+}
+
+void compact_memory_init(void)
+{
+	struct delayed_work *work = &compact_work;
+	INIT_DEFERRABLE_WORK(work, compact_memory_work);
+
+	sysctl_compact_memory_s = 0; /*120;*/
+	sysctl_compact_memory_s_min = 0;
+	sysctl_compact_memory_ratio = 10;
+	sysctl_compact_memory_ratio_min = 1;
+	sysctl_compact_memory_ratio_max = 100;
+
+	/* temporarily close this feature */
+	if (0 == sysctl_compact_memory_s)
+	    return;
+
+	schedule_delayed_work(work,
+		round_jiffies_relative(sysctl_compact_memory_s * HZ));
+}
+#endif
 
 #if defined(CONFIG_SYSFS) && defined(CONFIG_NUMA)
 ssize_t sysfs_compact_node(struct device *dev,

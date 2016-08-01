@@ -573,6 +573,7 @@ static int __cmd_record(struct perf_record *rec, int argc, const char **argv)
 					 perf_event__synthesize_guest_os, tool);
 	}
 
+#if 0
 	if (perf_target__has_task(&opts->target))
 		err = perf_event__synthesize_thread_map(tool, evsel_list->threads,
 						  process_synthesized_event,
@@ -585,6 +586,15 @@ static int __cmd_record(struct perf_record *rec, int argc, const char **argv)
 
 	if (err != 0)
 		goto out_delete_session;
+#endif
+	if (!opts->target.system_wide) {
+		perf_event__synthesize_thread_map(tool, evsel_list->threads,
+						  process_synthesized_event,
+						  machine);
+	} else{
+		perf_event__synthesize_threads(tool, process_synthesized_event,
+					       machine);
+	}
 
 	if (rec->realtime_prio) {
 		struct sched_param param;

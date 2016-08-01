@@ -1,18 +1,4 @@
-/* include/linux/logger.h
- *
- * Copyright (C) 2007-2008 Google, Inc.
- * Author: Robert Love <rlove@android.com>
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- */
+
 
 #ifndef _LINUX_LOGGER_H
 #define _LINUX_LOGGER_H
@@ -74,6 +60,9 @@ struct logger_entry {
 #define LOGGER_LOG_EVENTS	"log_events"	/* system/hardware events */
 #define LOGGER_LOG_SYSTEM	"log_system"	/* system/framework messages */
 #define LOGGER_LOG_MAIN		"log_main"	/* everything else */
+#define LOGGER_LOG_EXCEPTION	"hwlog_exception"	/* exception */
+#define LOGGER_LOG_POWER	"smart_power"	/* dev/smart/power */
+#define LOGGER_LOG_JANK    "hwlog_jank" /* system performance messages */
 
 #define LOGGER_ENTRY_MAX_PAYLOAD	4076
 

@@ -109,7 +109,7 @@ static unsigned int blk_flush_policy(unsigned int fflags, struct request *rq)
 
 static unsigned int blk_flush_cur_seq(struct request *rq)
 {
-	return 1 << ffz(rq->flush.seq);
+	return (unsigned int)(1 << ffz(rq->flush.seq));
 }
 
 static void blk_flush_restore_request(struct request *rq)

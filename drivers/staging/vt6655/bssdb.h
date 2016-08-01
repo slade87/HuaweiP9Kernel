@@ -161,7 +161,6 @@ typedef struct tagKnownBSS {
 } __attribute__ ((__packed__))
 KnownBSS , *PKnownBSS;
 
-//2006-1116-01,<Add> by NomadZhao
 #pragma pack()
 
 typedef enum tagNODE_STATE {

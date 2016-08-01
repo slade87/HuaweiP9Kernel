@@ -16,7 +16,15 @@ obj-$(CONFIG_PCI)		+= pci/
 obj-$(CONFIG_PARISC)		+= parisc/
 obj-$(CONFIG_RAPIDIO)		+= rapidio/
 obj-y				+= video/
+
+#add lcd here, because lcd must loading in fb module
+ifeq ($(CONFIG_HISI_FB_6250),y)
+obj-$(CONFIG_HUAWEI_LCD_PANEL)  += huawei_platform/lcd/
+endif
+#end
+
 obj-y				+= idle/
+obj-$(CONFIG_ATFDRIVER)         += atfdriver/
 
 # IPMI must come before ACPI in order to provide IPMI opregion support
 obj-$(CONFIG_IPMI_HANDLER)	+= char/ipmi/
@@ -46,7 +54,7 @@ obj-y				+= tty/
 obj-y				+= char/
 
 # gpu/ comes after char for AGP vs DRM startup
-obj-y				+= gpu/
+obj-y              += gpu/
 
 obj-$(CONFIG_CONNECTOR)		+= connector/
 
@@ -56,6 +64,7 @@ obj-$(CONFIG_FB_INTEL)          += video/intelfb/
 
 obj-$(CONFIG_PARPORT)		+= parport/
 obj-y				+= base/ block/ misc/ mfd/ nfc/
+#obj-y				+= misc_via/
 obj-$(CONFIG_NUBUS)		+= nubus/
 obj-y				+= macintosh/
 obj-$(CONFIG_IDE)		+= ide/
@@ -95,12 +104,11 @@ obj-y				+= i2c/ media/
 obj-$(CONFIG_PPS)		+= pps/
 obj-$(CONFIG_PTP_1588_CLOCK)	+= ptp/
 obj-$(CONFIG_W1)		+= w1/
-obj-$(CONFIG_POWER_SUPPLY)	+= power/
-obj-$(CONFIG_HWMON)		+= hwmon/
-obj-$(CONFIG_THERMAL)		+= thermal/
+#obj-$(CONFIG_POWER_SUPPLY)	+= power/
+obj-y		+= hwmon/
 obj-$(CONFIG_WATCHDOG)		+= watchdog/
 obj-$(CONFIG_MD)		+= md/
-obj-$(CONFIG_BT)		+= bluetooth/
+#obj-$(CONFIG_BT)		+= bluetooth/
 obj-$(CONFIG_ACCESSIBILITY)	+= accessibility/
 obj-$(CONFIG_ISDN)		+= isdn/
 obj-$(CONFIG_EDAC)		+= edac/
@@ -111,6 +119,7 @@ obj-$(CONFIG_CPU_IDLE)		+= cpuidle/
 obj-y				+= mmc/
 obj-$(CONFIG_MEMSTICK)		+= memstick/
 obj-y				+= leds/
+obj-$(CONFIG_SWITCH)		+= switch/
 obj-$(CONFIG_INFINIBAND)	+= infiniband/
 obj-$(CONFIG_SGI_SN)		+= sn/
 obj-y				+= firmware/
@@ -129,15 +138,20 @@ obj-$(CONFIG_SSB)		+= ssb/
 obj-$(CONFIG_BCMA)		+= bcma/
 obj-$(CONFIG_VHOST_RING)	+= vhost/
 obj-$(CONFIG_VLYNQ)		+= vlynq/
+obj-$(CONFIG_IOMMU_SUPPORT)	+= iommu/
 obj-$(CONFIG_STAGING)		+= staging/
 obj-y				+= platform/
+obj-y                           += videocom/
 #common clk code
 obj-y				+= clk/
+#obj-y		                += pmu/
 
-obj-$(CONFIG_MAILBOX)		+= mailbox/
+ifndef CONFIG_HI6XXX_THERMAL
+obj-$(CONFIG_THERMAL)           += thermal/
+endif
+
 obj-$(CONFIG_HWSPINLOCK)	+= hwspinlock/
 obj-$(CONFIG_NFC)		+= nfc/
-obj-$(CONFIG_IOMMU_SUPPORT)	+= iommu/
 obj-$(CONFIG_REMOTEPROC)	+= remoteproc/
 obj-$(CONFIG_RPMSG)		+= rpmsg/
 
@@ -152,3 +166,42 @@ obj-$(CONFIG_IIO)		+= iio/
 obj-$(CONFIG_VME_BUS)		+= vme/
 obj-$(CONFIG_IPACK_BUS)		+= ipack/
 obj-$(CONFIG_NTB)		+= ntb/
+obj-$(CONFIG_GATOR)		+= gator/
+obj-$(CONFIG_CORESIGHT)		+= hwtracing/
+obj-$(CONFIG_ANDROID)		+= android/
+
+obj-$(CONFIG_HI_VCODEC) += vcodec/hi_vcodec/venc/drv/venc/
+obj-$(CONFIG_HI_VCODEC) += vcodec/hi_vcodec/vdec/
+obj-$(CONFIG_IMAGINATION_D5500_VCODEC)  += vcodec/imagination/D5500/
+obj-$(CONFIG_SENSORS_CLASS)		+= sensors/
+obj-$(CONFIG_CONTEXTHUB)		+= contexthub/
+# hisi drivers
+#obj-$(CONFIG_HISILICON_PLATFORM) += hisi/
+obj-y += hisi/
+#IPC/MAILBOX
+
+obj-$(CONFIG_GATOR)		  += gator/
+
+ifeq ($(CONFIG_UTTEST), y) 
+LINUXINCLUDE := -I$(BALONG_TOPDIR)/build/tools/ut_tool/linux_stub/arch/$(SRCARCH)/include $(LINUXINCLUDE)
+endif 
+
+ifneq ($(strip $(CFG_HISI_OPENSOURCE)), true)
+obj-$(CONFIG_POWER_SUPPLY)     += power/
+obj-$(CONFIG_BT)               += bluetooth/
+obj-$(CONFIG_SRECORDER)     += srecorder/
+endif
+obj-$(CONFIG_HUAWEI_DSM)	+= dsm/
+ifneq ($(strip $(HISI_PILOT_LIBS)), true)
+#ifeq ($(findstring hi3650, $(OBB_PRODUCT_NAME) ),)
+obj-$(CONFIG_HUAWEI_PLATFORM) += huawei_platform/
+obj-$(CONFIG_HUAWEI_PLATFORM_LEGACY) += huawei_platform_legacy/
+obj-y     += hwusb/
+#endif
+else
+obj-y     += hisi_pilot/
+endif
+
+obj-y     += connectivity/
+obj-$(CONFIG_HWTC)  += hwtc/
+

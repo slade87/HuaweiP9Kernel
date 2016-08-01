@@ -82,6 +82,60 @@ static const struct hc_driver xhci_plat_xhci_driver = {
 	.bus_resume =		xhci_bus_resume,
 };
 
+static ssize_t xhci_compliance_store(struct device *dev, const char *buf, size_t size)
+{
+	struct usb_hcd *hcd = dev_get_drvdata(dev);
+	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+
+	xhci_set_link_state(xhci, xhci->usb3_ports, 0, USB_SS_PORT_LS_COMP_MOD);
+	dev_info(dev, "set link state compliance mode\n");
+
+	return size;
+}
+
+static int xhci_compliance_show(struct seq_file *s, void *d)
+{
+	seq_printf(s, "usage: echo 1 > xhci_compliance\n");
+
+	return 0;
+}
+
+static int xhci_compliance_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, xhci_compliance_show, inode->i_private);
+}
+
+static ssize_t xhci_compliance_write(struct file *file, const char __user *buf, size_t size, loff_t *ppos)
+{
+	struct device *dev = ((struct seq_file *)file->private_data)->private;
+
+	if (size > PAGE_SIZE) {
+		printk(KERN_ERR "set charger type cmd too long!\n");
+		return -ENOMEM;
+	}
+
+	xhci_compliance_store(dev, NULL, size);
+
+	return size;
+}
+static const struct file_operations xhci_compliance_debug_fops = {
+	.open = xhci_compliance_open,
+	.read = seq_read,
+	.write = xhci_compliance_write,
+	.release = single_release,
+};
+
+static int xhci_create_debug_file(struct device *dev)
+{
+	int ret = 0;
+
+	debugfs_create_file("xhci_compliance", S_IWUSR | S_IRUSR, usb_debug_root, dev, &xhci_compliance_debug_fops);
+	if (ret)
+		dev_err(dev, "create debugfs file error!\n");
+
+	return ret;
+}
+
 static int xhci_plat_probe(struct platform_device *pdev)
 {
 	const struct hc_driver	*driver;
@@ -107,6 +161,8 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	hcd = usb_create_hcd(driver, &pdev->dev, dev_name(&pdev->dev));
 	if (!hcd)
 		return -ENOMEM;
+
+	hcd_to_bus(hcd)->skip_resume = true;
 
 	hcd->rsrc_start = res->start;
 	hcd->rsrc_len = resource_size(res);
@@ -139,6 +195,8 @@ static int xhci_plat_probe(struct platform_device *pdev)
 		goto dealloc_usb2_hcd;
 	}
 
+	hcd_to_bus(xhci->shared_hcd)->skip_resume = true;
+
 	/*
 	 * Set the xHCI pointer before xhci_plat_setup() (aka hcd_driver.reset)
 	 * is called by usb_add_hcd().
@@ -148,6 +206,8 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	ret = usb_add_hcd(xhci->shared_hcd, irq, IRQF_SHARED);
 	if (ret)
 		goto put_usb3_hcd;
+
+	(void)xhci_create_debug_file(&pdev->dev);
 
 	return 0;
 

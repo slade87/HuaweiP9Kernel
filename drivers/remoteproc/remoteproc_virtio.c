@@ -26,7 +26,7 @@
 #include <linux/err.h>
 #include <linux/kref.h>
 #include <linux/slab.h>
-
+#include <linux/iommu.h>
 #include "remoteproc_internal.h"
 
 /* kick the remote processor, and let it know which virtqueue to poke at */
@@ -141,6 +141,8 @@ static void rproc_virtio_del_vqs(struct virtio_device *vdev)
 	rproc_shutdown(rproc);
 
 	__rproc_virtio_del_vqs(vdev);
+
+    vdev->config->reset(vdev);
 }
 
 static int rproc_virtio_find_vqs(struct virtio_device *vdev, unsigned nvqs,
@@ -165,11 +167,12 @@ static int rproc_virtio_find_vqs(struct virtio_device *vdev, unsigned nvqs,
 		dev_err(&rproc->dev, "rproc_boot() failed %d\n", ret);
 		goto error;
 	}
-
+    
 	return 0;
 
 error:
 	__rproc_virtio_del_vqs(vdev);
+
 	return ret;
 }
 

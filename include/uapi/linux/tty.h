@@ -5,7 +5,7 @@
  * 'tty.h' defines some structures used by tty_io.c and some defines.
  */
 
-#define NR_LDISCS		30
+#define NR_LDISCS		50
 
 /* line disciplines */
 #define N_TTY		0
@@ -34,5 +34,10 @@
 #define N_TI_WL		22	/* for TI's WL BT, FM, GPS combo chips */
 #define N_TRACESINK	23	/* Trace data routing for MIPI P1149.7 */
 #define N_TRACEROUTER	24	/* Trace data routing for MIPI P1149.7 */
+
+
+#define N_USB_COM   29  /*virtual COM from USB,added by hisi-balong*/
+
+#define N_HW_BFG    35 /* for huawei's BT, FM, GNSS, WLAN chip */
 
 #endif /* _UAPI_LINUX_TTY_H */

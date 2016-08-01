@@ -1657,7 +1657,7 @@ static int fill_note_info(struct elfhdr *elf, int phdrs,
 	 * Allocate a structure for each thread.
 	 */
 	for (ct = &dump_task->mm->core_state->dumper; ct; ct = ct->next) {
-		t = kzalloc(offsetof(struct elf_thread_core_info,
+		t = kzalloc(offsetof(struct elf_thread_core_info,/* [false alarm] */
 				     notes[info->thread_notes]),
 			    GFP_KERNEL);
 		if (unlikely(!t))

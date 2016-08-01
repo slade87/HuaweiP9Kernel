@@ -219,6 +219,8 @@ struct usb_cdc_mbim_desc {
 
 #define USB_CDC_SEND_ENCAPSULATED_COMMAND	0x00
 #define USB_CDC_GET_ENCAPSULATED_RESPONSE	0x01
+#define USB_CDC_REQ_SET_COMM_FEATURE		0x02
+#define USB_CDC_REQ_GET_COMM_FEATURE		0x03
 #define USB_CDC_REQ_SET_LINE_CODING		0x20
 #define USB_CDC_REQ_GET_LINE_CODING		0x21
 #define USB_CDC_REQ_SET_CONTROL_LINE_STATE	0x22
@@ -280,6 +282,7 @@ struct usb_cdc_line_coding {
 #define USB_CDC_NOTIFY_RESPONSE_AVAILABLE	0x01
 #define USB_CDC_NOTIFY_SERIAL_STATE		0x20
 #define USB_CDC_NOTIFY_SPEED_CHANGE		0x2a
+#define USB_CDC_VENDOR_NTF_FLOW_CONTROL     0x01
 
 struct usb_cdc_notification {
 	__u8	bmRequestType;

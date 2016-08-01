@@ -1,167 +1,6 @@
-/*+M*************************************************************************
- * Adaptec AIC7xxx device driver for Linux.
- *
- * Copyright (c) 1994 John Aycock
- *   The University of Calgary Department of Computer Science.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; see the file COPYING.  If not, write to
- * the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *
- * Sources include the Adaptec 1740 driver (aha1740.c), the Ultrastor 24F
- * driver (ultrastor.c), various Linux kernel source, the Adaptec EISA
- * config file (!adp7771.cfg), the Adaptec AHA-2740A Series User's Guide,
- * the Linux Kernel Hacker's Guide, Writing a SCSI Device Driver for Linux,
- * the Adaptec 1542 driver (aha1542.c), the Adaptec EISA overlay file
- * (adp7770.ovl), the Adaptec AHA-2740 Series Technical Reference Manual,
- * the Adaptec AIC-7770 Data Book, the ANSI SCSI specification, the
- * ANSI SCSI-2 specification (draft 10c), ...
- *
- * --------------------------------------------------------------------------
- *
- *  Modifications by Daniel M. Eischen (deischen@iworks.InterWorks.org):
- *
- *  Substantially modified to include support for wide and twin bus
- *  adapters, DMAing of SCBs, tagged queueing, IRQ sharing, bug fixes,
- *  SCB paging, and other rework of the code.
- *
- *  Parts of this driver were also based on the FreeBSD driver by
- *  Justin T. Gibbs.  His copyright follows:
- *
- * --------------------------------------------------------------------------  
- * Copyright (c) 1994-1997 Justin Gibbs.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions, and the following disclaimer,
- *    without modification, immediately at the beginning of the file.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
- *
- * Where this Software is combined with software released under the terms of 
- * the GNU General Public License ("GPL") and the terms of the GPL would require the 
- * combined work to also be released under the terms of the GPL, the terms
- * and conditions of this License will apply in addition to those of the
- * GPL with the exception of any terms or conditions of this License that
- * conflict with, or are expressly prohibited by, the GPL.
- *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- *
- *      $Id: aic7xxx.c,v 1.119 1997/06/27 19:39:18 gibbs Exp $
- *---------------------------------------------------------------------------
- *
- *  Thanks also go to (in alphabetical order) the following:
- *
- *    Rory Bolt     - Sequencer bug fixes
- *    Jay Estabrook - Initial DEC Alpha support
- *    Doug Ledford  - Much needed abort/reset bug fixes
- *    Kai Makisara  - DMAing of SCBs
- *
- *  A Boot time option was also added for not resetting the scsi bus.
- *
- *    Form:  aic7xxx=extended
- *           aic7xxx=no_reset
- *           aic7xxx=ultra
- *           aic7xxx=irq_trigger:[0,1]  # 0 edge, 1 level
- *           aic7xxx=verbose
- *
- *  Daniel M. Eischen, deischen@iworks.InterWorks.org, 1/23/97
- *
- *  $Id: aic7xxx.c,v 4.1 1997/06/12 08:23:42 deang Exp $
- *-M*************************************************************************/
 
-/*+M**************************************************************************
- *
- * Further driver modifications made by Doug Ledford <dledford@redhat.com>
- *
- * Copyright (c) 1997-1999 Doug Ledford
- *
- * These changes are released under the same licensing terms as the FreeBSD
- * driver written by Justin Gibbs.  Please see his Copyright notice above
- * for the exact terms and conditions covering my changes as well as the
- * warranty statement.
- *
- * Modifications made to the aic7xxx.c,v 4.1 driver from Dan Eischen include
- * but are not limited to:
- *
- *  1: Import of the latest FreeBSD sequencer code for this driver
- *  2: Modification of kernel code to accommodate different sequencer semantics
- *  3: Extensive changes throughout kernel portion of driver to improve
- *     abort/reset processing and error hanndling
- *  4: Other work contributed by various people on the Internet
- *  5: Changes to printk information and verbosity selection code
- *  6: General reliability related changes, especially in IRQ management
- *  7: Modifications to the default probe/attach order for supported cards
- *  8: SMP friendliness has been improved
- *
- * Overall, this driver represents a significant departure from the official
- * aic7xxx driver released by Dan Eischen in two ways.  First, in the code
- * itself.  A diff between the two version of the driver is now a several
- * thousand line diff.  Second, in approach to solving the same problem.  The
- * problem is importing the FreeBSD aic7xxx driver code to linux can be a
- * difficult and time consuming process, that also can be error prone.  Dan
- * Eischen's official driver uses the approach that the linux and FreeBSD
- * drivers should be as identical as possible.  To that end, his next version
- * of this driver will be using a mid-layer code library that he is developing
- * to moderate communications between the linux mid-level SCSI code and the
- * low level FreeBSD driver.  He intends to be able to essentially drop the
- * FreeBSD driver into the linux kernel with only a few minor tweaks to some
- * include files and the like and get things working, making for fast easy
- * imports of the FreeBSD code into linux.
- *
- * I disagree with Dan's approach.  Not that I don't think his way of doing
- * things would be nice, easy to maintain, and create a more uniform driver
- * between FreeBSD and Linux.  I have no objection to those issues.  My
- * disagreement is on the needed functionality.  There simply are certain
- * things that are done differently in FreeBSD than linux that will cause
- * problems for this driver regardless of any middle ware Dan implements.
- * The biggest example of this at the moment is interrupt semantics.  Linux
- * doesn't provide the same protection techniques as FreeBSD does, nor can
- * they be easily implemented in any middle ware code since they would truly
- * belong in the kernel proper and would effect all drivers.  For the time
- * being, I see issues such as these as major stumbling blocks to the 
- * reliability of code based upon such middle ware.  Therefore, I choose to
- * use a different approach to importing the FreeBSD code that doesn't
- * involve any middle ware type code.  My approach is to import the sequencer
- * code from FreeBSD wholesale.  Then, to only make changes in the kernel
- * portion of the driver as they are needed for the new sequencer semantics.
- * In this way, the portion of the driver that speaks to the rest of the
- * linux kernel is fairly static and can be changed/modified to solve
- * any problems one might encounter without concern for the FreeBSD driver.
- *
- * Note: If time and experience should prove me wrong that the middle ware
- * code Dan writes is reliable in its operation, then I'll retract my above
- * statements.  But, for those that don't know, I'm from Missouri (in the US)
- * and our state motto is "The Show-Me State".  Well, before I will put
- * faith into it, you'll have to show me that it works :)
- *
- *_M*************************************************************************/
+
+
 
 /*
  * The next three defines are user configurable.  These should be the only
@@ -1255,12 +1094,7 @@ static int aic7xxx_verbose = VERBOSE_NORMAL | VERBOSE_NEGOTIATION |
            VERBOSE_PROBE;                     /* verbose messages */
 
 
-/****************************************************************************
- *
- * We're going to start putting in function declarations so that order of
- * functions is no longer important.  As needed, they are added here.
- *
- ***************************************************************************/
+
 
 static int aic7xxx_release(struct Scsi_Host *host);
 static void aic7xxx_set_syncrate(struct aic7xxx_host *p, 
@@ -2358,7 +2192,7 @@ static inline void
 scbq_insert_tail(volatile scb_queue_type *queue, struct aic7xxx_scb *scb)
 {
   scb->q_next = NULL;
-  if (queue->tail != NULL)       /* Add the scb at the end of the list. */
+  if (queue->tail != NULL)
     queue->tail->q_next = scb;
   queue->tail = scb;             /* Update the tail. */
   if (queue->head == NULL)       /* If list was empty, update head. */
@@ -4440,15 +4274,7 @@ aic7xxx_handle_seqint(struct aic7xxx_host *p, unsigned char intstat)
 		  if(aic_dev->temp_q_depth > result)
 		    aic_dev->temp_q_depth = result;
 		}
-		/* We should free up the no unused SCB entries.  But, that's
-		 * a difficult thing to do because we use a direct indexed
-		 * array, so we can't just take any entries and free them,
-		 * we *have* to free the ones at the end of the array, and
-		 * they very well could be in use right now, which means
-		 * in order to do this right, we have to add a delayed
-		 * freeing mechanism tied into the scb_free() code area.
-		 * We'll add that later.
-		 */
+		
 	      }
               break;
             }
@@ -6766,33 +6592,7 @@ aic7xxx_slave_configure(struct scsi_device *SDptr)
   return(0);
 }
 
-/*+F*************************************************************************
- * Function:
- *   aic7xxx_probe
- *
- * Description:
- *   Probing for EISA boards: it looks like the first two bytes
- *   are a manufacturer code - three characters, five bits each:
- *
- *               BYTE 0   BYTE 1   BYTE 2   BYTE 3
- *              ?1111122 22233333 PPPPPPPP RRRRRRRR
- *
- *   The characters are baselined off ASCII '@', so add that value
- *   to each to get the real ASCII code for it. The next two bytes
- *   appear to be a product and revision number, probably vendor-
- *   specific. This is what is being searched for at each port,
- *   and what should probably correspond to the ID= field in the
- *   ECU's .cfg file for the card - if your card is not detected,
- *   make sure your signature is listed in the array.
- *
- *   The fourth byte's lowest bit seems to be an enabled/disabled
- *   flag (rest of the bits are reserved?).
- *
- * NOTE:  This function is only needed on Intel and Alpha platforms,
- *   the other platforms we support don't have EISA/VLB busses.  So,
- *   we #ifdef this entire function to avoid compiler warnings about
- *   an unused function.
- *-F*************************************************************************/
+
 #if defined(__i386__) || defined(__alpha__)
 static int
 aic7xxx_probe(int slot, int base, ahc_flag_type *flags)

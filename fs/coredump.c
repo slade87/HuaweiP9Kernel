@@ -487,7 +487,7 @@ void do_coredump(siginfo_t *siginfo)
 	struct core_state core_state;
 	struct core_name cn;
 	struct mm_struct *mm = current->mm;
-	struct linux_binfmt * binfmt;
+	struct linux_binfmt *binfmt;
 	const struct cred *old_cred;
 	struct cred *cred;
 	int retval = 0;
@@ -618,32 +618,33 @@ void do_coredump(siginfo_t *siginfo)
 			goto fail_unlock;
 		}
 
-		/*
-		 * Unlink the file if it exists unless this is a SUID
-		 * binary - in that case, we're running around with root
-		 * privs and don't want to unlink another user's coredump.
-		 */
-		if (!need_suid_safe) {
-			mm_segment_t old_fs;
 
-			old_fs = get_fs();
-			set_fs(KERNEL_DS);
-			/*
+		/*
+		* Unlink the file if it exists unless this is a SUID
+		* binary - in that case, we're running around with root
+		* privs and don't want to unlink another user's coredump.
+		*/
+		if (!need_suid_safe) {
+			 mm_segment_t old_fs;
+
+			 old_fs = get_fs();
+			 set_fs(KERNEL_DS);
+			 /*
 			 * If it doesn't exist, that's fine. If there's some
 			 * other problem, we'll catch it at the filp_open().
 			 */
-			(void) sys_unlink((const char __user *)cn.corename);
-			set_fs(old_fs);
+			 (void) sys_unlink((const char __user *)cn.corename);
+			 set_fs(old_fs);
 		}
 
 		/*
-		 * There is a race between unlinking and creating the
-		 * file, but if that causes an EEXIST here, that's
-		 * fine - another process raced with us while creating
-		 * the corefile, and the other process won. To userspace,
-		 * what matters is that at least one of the two processes
-		 * writes its coredump successfully, not which one.
-		 */
+		* There is a race between unlinking and creating the
+		* file, but if that causes an EEXIST here, that's
+		* fine - another process raced with us while creating
+		* the corefile, and the other process won. To userspace,
+		* what matters is that at least one of the two processes
+		* writes its coredump successfully, not which one.
+		*/
 		cprm.file = filp_open(cn.corename,
 				 O_CREAT | 2 | O_NOFOLLOW |
 				 O_LARGEFILE | O_EXCL,

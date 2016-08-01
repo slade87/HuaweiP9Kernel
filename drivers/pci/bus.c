@@ -160,12 +160,7 @@ pci_bus_alloc_resource(struct pci_bus *bus, struct resource *res,
 
 void __weak pcibios_resource_survey_bus(struct pci_bus *bus) { }
 
-/**
- * pci_bus_add_device - start driver for a single device
- * @dev: device to add
- *
- * This adds add sysfs entries and start device drivers
- */
+
 int pci_bus_add_device(struct pci_dev *dev)
 {
 	int retval;
@@ -186,12 +181,7 @@ int pci_bus_add_device(struct pci_dev *dev)
 	return 0;
 }
 
-/**
- * pci_bus_add_devices - start driver for PCI devices
- * @bus: bus to check for new devices
- *
- * Start driver for PCI devices and add some sysfs entries.
- */
+
 void pci_bus_add_devices(const struct pci_bus *bus)
 {
 	struct pci_dev *dev;

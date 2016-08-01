@@ -3,6 +3,7 @@
  *
  * Copyright (C) 1995-2009 Russell King
  * Copyright (C) 2012 ARM Ltd.
+ * Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -30,12 +31,15 @@
 #include <linux/init.h>
 #include <linux/sched.h>
 #include <linux/syscalls.h>
+#include <linux/nmi.h>
 
 #include <asm/atomic.h>
+#include <asm/debug-monitors.h>
 #include <asm/traps.h>
 #include <asm/stacktrace.h>
 #include <asm/exception.h>
 #include <asm/system_misc.h>
+#include <linux/kmsg_dump.h>
 
 static const char *handler[]= {
 	"Synchronous Abort",
@@ -45,6 +49,18 @@ static const char *handler[]= {
 };
 
 int show_unhandled_signals = 1;
+
+extern void dmss_fiq_handler(void);
+
+#ifdef CONFIG_DETECT_HUNG_TASK
+typedef void (*funcptr2)(unsigned long, unsigned long);
+extern void add_hw_hungtask_hook(funcptr2 printhook);
+static funcptr2 hw_hung_task_hook;
+void add_hw_hungtask_hook(funcptr2 printhook)
+{
+	hw_hung_task_hook = printhook;
+}
+#endif
 
 /*
  * Dump out the contents of some memory nicely...
@@ -131,7 +147,6 @@ static void dump_instr(const char *lvl, struct pt_regs *regs)
 static void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 {
 	struct stackframe frame;
-	const register unsigned long current_sp asm ("sp");
 
 	pr_debug("%s(regs = %p tsk = %p)\n", __func__, regs, tsk);
 
@@ -144,7 +159,7 @@ static void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 		frame.pc = regs->pc;
 	} else if (tsk == current) {
 		frame.fp = (unsigned long)__builtin_frame_address(0);
-		frame.sp = current_sp;
+		frame.sp = current_stack_pointer;
 		frame.pc = (unsigned long)dump_backtrace;
 	} else {
 		/*
@@ -155,7 +170,7 @@ static void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 		frame.pc = thread_saved_pc(tsk);
 	}
 
-	printk("Call trace:\n");
+	pr_emerg("Call trace:\n");
 	while (1) {
 		unsigned long where = frame.pc;
 		int ret;
@@ -172,6 +187,26 @@ void show_stack(struct task_struct *tsk, unsigned long *sp)
 	dump_backtrace(NULL, tsk);
 	barrier();
 }
+
+void show_stack_ex(struct pt_regs *regs, struct task_struct *tsk)
+{
+	if (!user_mode(regs) || in_interrupt()) {
+		dump_backtrace(regs, tsk);
+		barrier();
+	} else {
+		pr_info("Call trace: in user_mode!\n");
+	}
+}
+
+typedef void (*rdr_funcptr_3)(unsigned long, unsigned long, unsigned long);
+void exc_hook_add(rdr_funcptr_3 p_hook_func)
+{
+}
+
+void exc_hook_delete(void)
+{
+}
+
 
 #ifdef CONFIG_PREEMPT
 #define S_PREEMPT " PREEMPT"
@@ -237,6 +272,7 @@ void die(const char *str, struct pt_regs *regs, int err)
 	bust_spinlocks(0);
 	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
 	raw_spin_unlock_irq(&die_lock);
+
 	oops_exit();
 
 	if (in_interrupt())
@@ -256,17 +292,72 @@ void arm64_notify_die(const char *str, struct pt_regs *regs,
 		die(str, regs, err);
 }
 
+static LIST_HEAD(undef_hook);
+static DEFINE_RAW_SPINLOCK(undef_lock);
+
+void register_undef_hook(struct undef_hook *hook)
+{
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&undef_lock, flags);
+	list_add(&hook->node, &undef_hook);
+	raw_spin_unlock_irqrestore(&undef_lock, flags);
+}
+
+void unregister_undef_hook(struct undef_hook *hook)
+{
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&undef_lock, flags);
+	list_del(&hook->node);
+	raw_spin_unlock_irqrestore(&undef_lock, flags);
+}
+
+static int call_undef_hook(struct pt_regs *regs, unsigned int instr)
+{
+	struct undef_hook *hook;
+	int (*fn)(struct pt_regs *regs, unsigned int instr) = NULL;
+
+	list_for_each_entry(hook, &undef_hook, node)
+		if ((instr & hook->instr_mask) == hook->instr_val &&
+		    (regs->pstate & hook->pstate_mask) == hook->pstate_val)
+			fn = hook->fn;
+
+	return fn ? fn(regs, instr) : 1;
+}
+
 asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 {
+	u32 instr;
 	siginfo_t info;
 	void __user *pc = (void __user *)instruction_pointer(regs);
 
-#ifdef CONFIG_COMPAT
 	/* check for AArch32 breakpoint instructions */
-	if (compat_user_mode(regs) && aarch32_break_trap(regs) == 0)
+	if (!aarch32_break_handler(regs))
 		return;
-#endif
+	if (user_mode(regs)) {
+		if (compat_thumb_mode(regs)) {
+			if (get_user(instr, (u16 __user *)pc))
+				goto die_sig;
+			if (is_wide_instruction(instr)) {
+				u32 instr2;
+				if (get_user(instr2, (u16 __user *)pc+1))
+					goto die_sig;
+				instr <<= 16;
+				instr |= instr2;
+			}
+		} else if (get_user(instr, (u32 __user *)pc)) {
+			goto die_sig;
+		}
+	} else {
+		/* kernel mode */
+		instr = *((u32 *)pc);
+	}
 
+	if (call_undef_hook(regs, instr) == 0)
+		return;
+
+die_sig:
 	if (show_unhandled_signals && unhandled_signal(current, SIGILL) &&
 	    printk_ratelimit()) {
 		pr_info("%s[%d]: undefined instruction: pc=%p\n",
@@ -306,6 +397,71 @@ asmlinkage long do_ni_syscall(struct pt_regs *regs)
 	return sys_ni_syscall();
 }
 
+#ifdef CONFIG_SMP
+void trigger_cpus_backtrace(struct pt_regs *regs)
+{
+        smp_send_all_cpu_backtrace(regs);
+}
+#else
+void trigger_cpus_backtrace(struct pt_regs *regs)
+{
+        show_stack_ex(regs, NULL);
+}
+#endif
+
+/*
+ * fiq_dump handles the case in the fiq exception vector.
+ */
+ #define BAD_FIQ     2
+
+#ifdef CONFIG_HISI_BB
+extern void hisiap_nmi_notify_lpm3(void);
+extern void last_task_stack_dump(void);
+extern void regs_dump(void);
+extern void save_module_dump_mem(void);
+#endif
+
+#ifdef CONFIG_HISI_CORESIGHT_TRACE
+extern void etm4_disable_all(void );
+#endif
+
+asmlinkage void fiq_dump(struct pt_regs *regs, unsigned int esr)
+{
+	pr_crit("fiq_dump begin\n");
+
+#ifdef CONFIG_HISI_DDRC_SEC
+	dmss_fiq_handler();
+#endif
+	console_verbose();
+	show_regs(regs);
+	trigger_cpus_backtrace(regs);
+#ifdef CONFIG_HISI_BB
+	hisiap_nmi_notify_lpm3();
+	last_task_stack_dump();
+	regs_dump(); /*"sctrl", "pctrl", "peri_crg", "gic"*/
+#endif
+	kmsg_dump(KMSG_DUMP_PANIC);
+
+#ifdef CONFIG_HISI_CORESIGHT_TRACE
+	etm4_disable_all();
+#endif
+#ifdef CONFIG_HISI_BB
+	save_module_dump_mem();
+#endif
+
+	pr_crit("fiq_dump end\n");
+	while (1);
+}
+
+extern struct semaphore modemddrc_happen_sem;
+void hisi_wdt_inform(void)
+{
+	pr_crit("hisi_wdt_inform\n");
+#ifdef CONFIG_HISI_BB
+	up(&modemddrc_happen_sem);
+#endif
+}
+
 /*
  * bad_mode handles the impossible case in the exception vector.
  */
@@ -329,17 +485,17 @@ asmlinkage void bad_mode(struct pt_regs *regs, int reason, unsigned int esr)
 
 void __pte_error(const char *file, int line, unsigned long val)
 {
-	printk("%s:%d: bad pte %016lx.\n", file, line, val);
+	pr_crit("%s:%d: bad pte %016lx.\n", file, line, val);
 }
 
 void __pmd_error(const char *file, int line, unsigned long val)
 {
-	printk("%s:%d: bad pmd %016lx.\n", file, line, val);
+	pr_crit("%s:%d: bad pmd %016lx.\n", file, line, val);
 }
 
 void __pgd_error(const char *file, int line, unsigned long val)
 {
-	printk("%s:%d: bad pgd %016lx.\n", file, line, val);
+	pr_crit("%s:%d: bad pgd %016lx.\n", file, line, val);
 }
 
 void __init trap_init(void)

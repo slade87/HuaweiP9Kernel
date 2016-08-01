@@ -72,7 +72,7 @@
 #include "tether.h"
 #include "mac.h"
 
-unsigned short TxRate_iwconfig;//2008-5-8 <add> by chester
+unsigned short TxRate_iwconfig;
 /*---------------------  Static Definitions -------------------------*/
 //static int          msglevel                =MSG_LEVEL_DEBUG;
 static int msglevel = MSG_LEVEL_INFO;

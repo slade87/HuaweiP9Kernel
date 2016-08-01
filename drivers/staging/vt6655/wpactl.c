@@ -624,7 +624,7 @@ static int wpa_get_scan(PSDevice pDevice,
 	kfree(ptempBSS);
 #endif
 
-//******mike:bubble sort by stronger RSSI*****//
+// ******mike:bubble sort by stronger RSSI*****//
 
 	count = 0;
 	pBSS = &(pMgmt->sBSSList[0]);
@@ -794,7 +794,6 @@ static int wpa_set_associate(PSDevice pDevice,
 		if (!bWepEnabled)  pDevice->eEncryptionStatus = Ndis802_11EncryptionDisabled;
 		else pDevice->eEncryptionStatus = Ndis802_11Encryption1Enabled;
 		//pMgmt->eAuthenMode = WMAC_AUTH_OPEN;
-		//pMgmt->bShareKeyAlgorithm = false; //20080717-06,<Modify> by chester//Fix Open mode, WEP encryption
 	}
 //mike save old encryption status
 	pDevice->eOldEncryptionStatus = pDevice->eEncryptionStatus;
@@ -804,14 +803,13 @@ static int wpa_set_associate(PSDevice pDevice,
 	else
 		pDevice->bEncryptionEnable = false;
 	if (!((pMgmt->eAuthenMode == WMAC_AUTH_SHAREKEY) ||
-	      ((pMgmt->eAuthenMode == WMAC_AUTH_OPEN) && (bWepEnabled == true))))  //DavidWang  //20080717-06,<Modify> by chester//Not to initial WEP
+	      ((pMgmt->eAuthenMode == WMAC_AUTH_OPEN) && (bWepEnabled == true))))
 		KeyvInitTable(&pDevice->sKey, pDevice->PortOffset);
 	spin_lock_irq(&pDevice->lock);
 	pDevice->bLinkPass = false;
 	memset(pMgmt->abyCurrBSSID, 0, 6);
 	pMgmt->eCurrState = WMAC_STATE_IDLE;
 	netif_stop_queue(pDevice->dev);
-	//20080701-02,<Add> by Mike Liu
 /*******search if ap_scan=2 ,which is associating request in hidden ssid mode ****/
 	{
 		PKnownBSS       pCurr = NULL;

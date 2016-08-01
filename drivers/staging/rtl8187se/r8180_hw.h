@@ -568,7 +568,6 @@
 #define EEPROM_DEF_ANT_1			0x0400
 /*by amy for antenna																				*/
 /* {by amy 080312																					*/
-/* 0x7C, 0x7D Crystal calibration and Tx Power tracking mechanism. Added by Roger. 2007.12.10.		*/
 #define EEPROM_RSV						0x7C
 #define EEPROM_XTAL_CAL_XOUT_MASK	0x0F	/* 0x7C[3:0], Crystal calibration for Xout.				*/
 #define EEPROM_XTAL_CAL_XIN_MASK		0xF0	/* 0x7C[7:4], Crystal calibration for Xin.			*/
@@ -581,8 +580,6 @@
 #define CCK_FALSE_ALARM		0xD0
 /* by amy 080312} */
 
-/* YJ,add for Country IE, 080630 */
 #define EEPROM_COUNTRY_CODE  0x2E
-/* YJ,add,080630,end */
 
 #endif

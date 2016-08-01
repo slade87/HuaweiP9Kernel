@@ -386,4 +386,16 @@ config CRYPTO_DEV_ATMEL_SHA
 	  To compile this driver as a module, choose M here: the module
 	  will be called atmel-sha.
 
+config CRYPTO_DEV_DX_CC63P
+	tristate "Driver for Discretix dx_cc63p crypto hardwareacceleration"
+	select CRYPTO_ALGAPI
+	default n
+	help
+	  This option allows you to have support for Discretix dx_cc63p
+	  acceleration.
+
+if CRYPTO_DEV_DX_CC63P
+	source "drivers/crypto/dx_ccp63/Kconfig"
+endif # if CRYPTO_DEV_DX_CC63P
+
 endif # CRYPTO_HW

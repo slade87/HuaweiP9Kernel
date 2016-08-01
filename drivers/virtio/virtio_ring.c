@@ -23,6 +23,8 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/hrtimer.h>
+#include <linux/remoteproc.h>
+#include <linux/kernel.h>
 
 #ifdef DEBUG
 /* For development, we want to crash whenever the ring is screwed. */
@@ -97,6 +99,15 @@ struct vring_virtqueue
 };
 
 #define to_vvq(_vq) container_of(_vq, struct vring_virtqueue, vq)
+
+static unsigned long get_device_addr(struct virtqueue *vq, dma_addr_t dma)
+{
+    struct virtio_device *vdev = vq->vdev;
+    struct rproc_vdev *rvdev = container_of(vdev, struct rproc_vdev, vdev);
+    struct rproc *rproc = rvdev->rproc;
+
+    return ((dma - vq->dma_base) + rproc->ipc_addr);
+}
 
 static inline struct scatterlist *sg_next_chained(struct scatterlist *sg,
 						  unsigned int *count)
@@ -195,6 +206,7 @@ static inline int virtqueue_add(struct virtqueue *_vq,
 	struct vring_virtqueue *vq = to_vvq(_vq);
 	struct scatterlist *sg;
 	unsigned int i, n, avail, uninitialized_var(prev), total_sg;
+    dma_addr_t dma_tmp;
 	int head;
 
 	START_USE(vq);
@@ -235,8 +247,10 @@ static inline int virtqueue_add(struct virtqueue *_vq,
 		/* FIXME: for historical reasons, we force a notify here if
 		 * there are outgoing parts to the buffer.  Presumably the
 		 * host should service the ring ASAP. */
-		if (out_sgs)
+		if (out_sgs) {
+            printk("%s:here is a kick !\n", __func__);
 			vq->notify(&vq->vq);
+        }
 		END_USE(vq);
 		return -ENOSPC;
 	}
@@ -248,8 +262,15 @@ static inline int virtqueue_add(struct virtqueue *_vq,
 	for (n = 0; n < out_sgs; n++) {
 		for (sg = sgs[n]; sg; sg = next(sg, &total_out)) {
 			vq->vring.desc[i].flags = VRING_DESC_F_NEXT;
+#if (defined(CONFIG_HISTAR_ISP) || defined(CONFIG_HUAWEI_CAMERA_USE_HISP100))
+            /* compute the device address */
+            dma_tmp = sg_dma_address(sg);
+			vq->vring.desc[i].addr = get_device_addr(_vq, dma_tmp);
+            vq->vring.desc[i].len = sg->length;
+#else
 			vq->vring.desc[i].addr = sg_phys(sg);
-			vq->vring.desc[i].len = sg->length;
+            vq->vring.desc[i].len = sg->length;
+#endif
 			prev = i;
 			i = vq->vring.desc[i].next;
 		}
@@ -257,7 +278,14 @@ static inline int virtqueue_add(struct virtqueue *_vq,
 	for (; n < (out_sgs + in_sgs); n++) {
 		for (sg = sgs[n]; sg; sg = next(sg, &total_in)) {
 			vq->vring.desc[i].flags = VRING_DESC_F_NEXT|VRING_DESC_F_WRITE;
+#if (defined(CONFIG_HISTAR_ISP) || defined(CONFIG_HUAWEI_CAMERA_USE_HISP100))
+            /* compute the device address */
+            dma_tmp = sg_dma_address(sg);
+			vq->vring.desc[i].addr = get_device_addr(_vq, dma_tmp);
+            vq->vring.desc[i].len = sg->length;
+#else
 			vq->vring.desc[i].addr = sg_phys(sg);
+#endif
 			vq->vring.desc[i].len = sg->length;
 			prev = i;
 			i = vq->vring.desc[i].next;

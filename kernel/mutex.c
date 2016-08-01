@@ -24,6 +24,7 @@
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
 #include <linux/debug_locks.h>
+#include <linux/delay.h>
 
 /*
  * In the DEBUG case we are using the "NULL fastpath" for mutexes,
@@ -55,6 +56,9 @@ __mutex_init(struct mutex *lock, const char *name, struct lock_class_key *key)
 #endif
 
 	debug_mutex_init(lock, name, key);
+#ifdef CONFIG_ILOCKDEP
+	lock->idep_map.name = name;
+#endif
 }
 
 EXPORT_SYMBOL(__mutex_init);
@@ -99,6 +103,9 @@ void __sched mutex_lock(struct mutex *lock)
 	 */
 	__mutex_fastpath_lock(&lock->count, __mutex_lock_slowpath);
 	mutex_set_owner(lock);
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_acquired(&lock->idep_map, _RET_IP_, (void *)lock);
+#endif
 }
 
 EXPORT_SYMBOL(mutex_lock);
@@ -249,6 +256,10 @@ void __sched mutex_unlock(struct mutex *lock)
 	 */
 	mutex_clear_owner(lock);
 #endif
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_release(&lock->idep_map, _RET_IP_, (void *)lock);
+#endif
+
 	__mutex_fastpath_unlock(&lock->count, __mutex_unlock_slowpath);
 }
 
@@ -267,6 +278,10 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 
 	preempt_disable();
 	mutex_acquire_nest(&lock->dep_map, subclass, 0, nest_lock, ip);
+
+#ifdef CONFIG_ILOCKDEP
+		ilockdep_acquire(&lock->idep_map, ip, (void *)lock);
+#endif
 
 #ifdef CONFIG_MUTEX_SPIN_ON_OWNER
 	/*
@@ -335,6 +350,17 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 		 * values at the cost of a few extra spins.
 		 */
 		arch_mutex_cpu_relax();
+
+                /*
+                 * On arm systems, we must slow down the waiter's repeated
+                 * aquisition of spin_mlock and atomics on the lock count, or
+                 * we risk starving out a thread attempting to release the
+                 * mutex. The mutex slowpath release must take spin lock
+                 * wait_lock. This spin lock can share a monitor with the
+                 * other waiter atomics in the mutex data structure, so must
+                 * take care to rate limit the waiters.
+                 */
+                udelay(1);
 	}
 slowpath:
 #endif
@@ -343,7 +369,6 @@ slowpath:
 	debug_mutex_lock_common(lock, &waiter);
 	debug_mutex_add_waiter(lock, &waiter, task_thread_info(task));
 
-	/* add waiting tasks to the end of the waitqueue (FIFO): */
 	list_add_tail(&waiter.list, &lock->wait_list);
 	waiter.task = task;
 
@@ -401,6 +426,10 @@ done:
 	spin_unlock_mutex(&lock->wait_lock, flags);
 
 	debug_mutex_free_waiter(&waiter);
+
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_clear_locking(current);
+#endif
 	preempt_enable();
 
 	return 0;
@@ -515,10 +544,25 @@ int __sched mutex_lock_interruptible(struct mutex *lock)
 	int ret;
 
 	might_sleep();
+
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_acquire(&lock->idep_map, _RET_IP_, (void *)lock);
+#endif
+
 	ret =  __mutex_fastpath_lock_retval
 			(&lock->count, __mutex_lock_interruptible_slowpath);
+
+#ifdef CONFIG_ILOCKDEP
+	if (!ret) {
+		mutex_set_owner(lock);
+		ilockdep_acquired(&lock->idep_map, _RET_IP_, (void *)lock);
+	} else {
+		ilockdep_clear_locking(current);
+	}
+#else
 	if (!ret)
 		mutex_set_owner(lock);
+#endif
 
 	return ret;
 }
@@ -530,11 +574,23 @@ int __sched mutex_lock_killable(struct mutex *lock)
 	int ret;
 
 	might_sleep();
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_acquire(&lock->idep_map, _RET_IP_, (void *)lock);
+#endif
+
 	ret = __mutex_fastpath_lock_retval
 			(&lock->count, __mutex_lock_killable_slowpath);
+#ifdef CONFIG_ILOCKDEP
+	if (!ret) {
+		mutex_set_owner(lock);
+		ilockdep_acquired(&lock->idep_map, _RET_IP_, (void *)lock);
+	} else {
+		ilockdep_clear_locking(current);
+	}
+#else
 	if (!ret)
 		mutex_set_owner(lock);
-
+#endif
 	return ret;
 }
 EXPORT_SYMBOL(mutex_lock_killable);
@@ -580,6 +636,9 @@ static inline int __mutex_trylock_slowpath(atomic_t *lock_count)
 	if (likely(prev == 1)) {
 		mutex_set_owner(lock);
 		mutex_acquire(&lock->dep_map, 0, 1, _RET_IP_);
+		#ifdef CONFIG_ILOCKDEP
+		ilockdep_acquire(&lock->idep_map, _RET_IP_, (void *)lock);
+		#endif
 	}
 
 	/* Set it back to 0 if there are no waiters: */
@@ -610,9 +669,15 @@ int __sched mutex_trylock(struct mutex *lock)
 	int ret;
 
 	ret = __mutex_fastpath_trylock(&lock->count, __mutex_trylock_slowpath);
+#ifdef CONFIG_ILOCKDEP
+	if (ret) {
+		mutex_set_owner(lock);
+		ilockdep_acquired(&lock->idep_map, _RET_IP_, (void *)lock);
+	}
+#else
 	if (ret)
 		mutex_set_owner(lock);
-
+#endif
 	return ret;
 }
 EXPORT_SYMBOL(mutex_trylock);

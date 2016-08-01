@@ -48,13 +48,28 @@ static ssize_t rproc_trace_read(struct file *filp, char __user *userbuf,
 						size_t count, loff_t *ppos)
 {
 	struct rproc_mem_entry *trace = filp->private_data;
-	int len = strnlen(trace->va, trace->len);
+	if(NULL == trace->va)
+		pr_err("trace->va is null!\n");
+	return simple_read_from_buffer(userbuf, count, ppos, trace->va, trace->len);
+}
 
-	return simple_read_from_buffer(userbuf, count, ppos, trace->va, len);
+static ssize_t rproc_cda_read(struct file *filp, char __user *userbuf,
+						size_t count, loff_t *ppos)
+{
+	struct rproc_mem_entry *cda = filp->private_data;
+	if(NULL == cda->va)
+		pr_err("cda->va is null!\n");
+	return simple_read_from_buffer(userbuf, count, ppos, cda->va, cda->len);
 }
 
 static const struct file_operations trace_rproc_ops = {
 	.read = rproc_trace_read,
+	.open = simple_open,
+	.llseek	= generic_file_llseek,
+};
+
+static const struct file_operations cda_rproc_ops = {
+	.read = rproc_cda_read,
 	.open = simple_open,
 	.llseek	= generic_file_llseek,
 };
@@ -156,6 +171,9 @@ rproc_recovery_write(struct file *filp, const char __user *user_buf,
 	char buf[10];
 	int ret;
 
+    if (user_buf == NULL)
+        return -EINVAL;
+
 	if (count > sizeof(buf))
 		return count;
 
@@ -200,10 +218,25 @@ struct dentry *rproc_create_trace_file(const char *name, struct rproc *rproc,
 {
 	struct dentry *tfile;
 
-	tfile = debugfs_create_file(name, 0400, rproc->dbg_dir,
+	tfile = debugfs_create_file(name, 0755, rproc->dbg_dir,
 						trace, &trace_rproc_ops);
 	if (!tfile) {
 		dev_err(&rproc->dev, "failed to create debugfs trace entry\n");
+		return NULL;
+	}
+
+	return tfile;
+}
+
+struct dentry *rproc_create_cda_file(const char *name, struct rproc *rproc,
+					struct rproc_mem_entry *cda)
+{
+	struct dentry *tfile;
+
+	tfile = debugfs_create_file(name, 0755, rproc->dbg_dir,
+						cda, &cda_rproc_ops);
+	if (!tfile) {
+		dev_err(&rproc->dev, "failed to create debugfs cda entry\n");
 		return NULL;
 	}
 

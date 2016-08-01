@@ -135,7 +135,43 @@ fw-shipped-$(CONFIG_USB_SERIAL_XIRCOM) += keyspan_pda/xircom_pgs.fw
 fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
+fw-shipped-$(CONFIG_IPPS_SUPPORT) += ipps/ipps-v2.bin
 
+#touchscreen img
+fw-shipped-y += cyttsp4_fw_g750.bin
+fw-shipped-y += ts/austin_synaptics_S3320_jdi.img
+fw-shipped-$(CONFIG_NEXT_TOUCH_FW) += ts/next_synaptics_NEXT11080_jdi.img
+fw-shipped-$(CONFIG_NEXT_TOUCH_FW) += ts/next_synaptics_NEXT18100_lg.img
+fw-shipped-$(CONFIG_KNIGHT_TOUCH_FW) += ts/knight_synaptics_KNI18100_lg.img
+fw-shipped-$(CONFIG_KNIGHT_TOUCH_FW) += ts/knight_synaptics_KNIG18101_lg.img
+fw-shipped-$(CONFIG_KNIGHT_TOUCH_FW) += ts/knight_synaptics_KNIG18130_boe.img
+fw-shipped-$(CONFIG_KNIGHT_TOUCH_FW) += ts/knight_synaptics_KNIG11081_jdi.img
+fw-shipped-$(CONFIG_KNIGHT_TOUCH_FW) += ts/knight_synaptics_KNIG11080_jdi.img
+fw-shipped-$(CONFIG_EVA_TOUCH_FW) += ts/eva_synaptics_EVA_18100_lg.img
+fw-shipped-$(CONFIG_EVA_TOUCH_FW) += ts/eva_synaptics_EVA_11080_jdi.img
+fw-shipped-$(CONFIG_EVA_TOUCH_FW) += ts/eva_synaptics_S3320B_jdi.img
+fw-shipped-$(CONFIG_VIE_TOUCH_FW) += ts/vienna_synaptics_VIEN17090_lg.img
+fw-shipped-$(CONFIG_VIE_TOUCH_FW) += ts/vienna_synaptics_VIEN17091_lg.img
+fw-shipped-$(CONFIG_EVA_TOUCH_FW) += ts/atmel/eva_config.raw
+fw-shipped-$(CONFIG_EVA_TOUCH_FW) += ts/atmel/eva_config_feature.raw
+fw-shipped-$(CONFIG_EVA_TOUCH_FW) += ts/atmel/eva_firmware.fw
+fw-shipped-$(CONFIG_KNIGHT_TOUCH_FW) += ts/atmel/knight_sharp_fhd_config.raw
+fw-shipped-$(CONFIG_KNIGHT_TOUCH_FW) += ts/atmel/knight_sharp_wqhd_config.raw
+fw-shipped-$(CONFIG_KNIGHT_TOUCH_FW) += ts/atmel/knight_firmware.fw
+fw-shipped-$(CONFIG_KNIGHT_TOUCH_FW) += ts/atmel/knight_config_feature.raw
+fw-shipped-$(CONFIG_NEMO_TOUCH_FW) += ts/Nemo_CS445A_default.bin
+fw-shipped-$(CONFIG_VIE_TOUCH_FW) += ts/vienna_hideep_ist510e.bin
+fw-shipped-$(CONFIG_VENUS_TOUCH_FW) += ts/venus_synaptics_VENS11140_ebbg.img
+fw-shipped-$(CONFIG_VENUS_TOUCH_FW) += ts/venus_synaptics_VENS11130_boe.img
+fw-shipped-$(CONFIG_VENUS_TOUCH_FW) += ts/venus_synaptics_VENS11120_cmi.img
+fw-shipped-$(CONFIG_VENUS_TOUCH_FW) += ts/venus_synaptics_VENS11080_jdi.img
+fw-shipped-$(CONFIG_VENUS_TOUCH_FW) += ts/venus_synaptics_VENS18100_lg.img
+fw-shipped-$(CONFIG_FRD_TOUCH_FW) += ts/frd_synaptics_FRD_18100_lg.img
+fw-shipped-$(CONFIG_FRD_TOUCH_FW) += ts/frd_synaptics_FRD_11080_jdi.img
+fw-shipped-$(CONFIG_FRD_TOUCH_FW) += ts/atmel/frd_sharp_fhd_config.raw
+fw-shipped-$(CONFIG_FRD_TOUCH_FW) += ts/atmel/frd_firmware.fw
+fw-shipped-$(CONFIG_FRD_TOUCH_FW) += ts/atmel/frd_config_feature.raw
+fw-shipped-$(CONFIG_EDISON_TOUCH_FW) += ts/edison_synaptics_EDIS17090_samsung.img
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 
 # Directories which we _might_ need to create, so we have a rule for them.
@@ -207,9 +243,10 @@ $(patsubst %,$(obj)/%.gen.o, $(fw-external-y)): $(obj)/%.gen.o: $(fwdir)/%
 
 # .ihex is used just as a simple way to hold binary files in a source tree
 # where binaries are frowned upon. They are directly converted with objcopy.
-$(obj)/%: $(obj)/%.ihex | $(objtree)/$(obj)/$$(dir %)
+$(patsubst %,$(obj)/%, $(fw-shipped-y)):$(obj)/%: $(obj)/%.ihex | $(objtree)/$(obj)/$$(dir %)
 	$(call cmd,ihex)
-
+$(patsubst %,$(obj)/%, $(fw-external-y)):$(obj)/%: $(obj)/%.ihex | $(objtree)/$(obj)/$$(dir %)
+	$(call cmd,ihex)
 # Don't depend on ihex2fw if we're installing and it already exists.
 # Putting it after | in the dependencies doesn't seem sufficient when
 # we're installing after a cross-compile, because ihex2fw has dependencies

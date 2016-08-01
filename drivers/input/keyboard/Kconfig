@@ -641,4 +641,30 @@ config KEYBOARD_CROS_EC
 	  To compile this driver as a module, choose M here: the
 	  module will be called cros_ec_keyb.
 
+config KEYBOARD_HISI_GPIO_KEY
+	tristate "HISI gpio key support,use to realize volume-up and volume-down"
+	help
+	  Say Y here to enable the power key support for HISI platform.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called hisi_gpio_key.
+
+config HISI_GPIO_KEY_SUPPORT_HI6XXX
+	bool "Hi6620 gpio key support, depends on HISI gpio key support"
+	depends on KEYBOARD_HISI_GPIO_KEY
+	help
+	  Say Y here to enable the power key support for 6620 platform.
+
+config HISI_GPIO_KEY_SUPPORT_SMART_KEY
+	bool "Smart key support, depends on HISI gpio key support"
+	depends on KEYBOARD_HISI_GPIO_KEY
+	help
+	  Say Y here to enable the power key support for smart key.
+
+config VOLUME_KEY_MASK
+	bool "volume keymask support, depends on HISI gpio key support"
+	depends on KEYBOARD_HISI_GPIO_KEY
+	help
+	  Say Y here to enable the volume keymask.
+
 endif

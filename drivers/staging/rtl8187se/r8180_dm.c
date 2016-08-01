@@ -48,7 +48,6 @@ void DoTxHighPower(struct net_device *dev)
 	RSSIHiPwrUpperTh = priv->RegRSSIHiPwrUpperTh;
 	RSSIHiPwrLowerTh = priv->RegRSSIHiPwrLowerTh;
 
-	/* lzm add 080826 */
 	OfdmTxPwrIdx  = priv->chtxpwr_ofdm[priv->ieee80211->current_network.channel];
 	CckTxPwrIdx  = priv->chtxpwr[priv->ieee80211->current_network.channel];
 
@@ -397,7 +396,7 @@ void TxPwrTracking87SE(struct net_device *dev)
 
 	tmpu1Byte = read_nic_byte(dev, EN_LPF_CAL);
 	CurrentThermal = (tmpu1Byte & 0xf0) >> 4; /*[ 7:4]: thermal meter indication. */
-	CurrentThermal = (CurrentThermal > 0x0c) ? 0x0c:CurrentThermal;/* lzm add 080826 */
+	CurrentThermal = (CurrentThermal > 0x0c) ? 0x0c:CurrentThermal;
 
 	if (CurrentThermal != priv->ThermalMeter) {
 		/* Update Tx Power level on each channel. */

@@ -178,7 +178,7 @@ static int send_to_group(struct inode *to_tell,
 	if (!inode_test_mask && !vfsmount_test_mask)
 		return 0;
 
-	if (group->ops->should_send_event(group, to_tell, inode_mark,
+	if (group->ops->should_send_event(group, to_tell, inode_mark,/* [false alarm] */
 					  vfsmount_mark, mask, data,
 					  data_is) == false)
 		return 0;
@@ -276,10 +276,10 @@ int fsnotify(struct inode *to_tell, __u32 mask, void *data, int data_is,
 			goto out;
 
 		if (inode_group)
-			inode_node = srcu_dereference(inode_node->next,
+			inode_node = srcu_dereference(inode_node->next,/* [false alarm] */
 						      &fsnotify_mark_srcu);
 		if (vfsmount_group)
-			vfsmount_node = srcu_dereference(vfsmount_node->next,
+			vfsmount_node = srcu_dereference(vfsmount_node->next,/* [false alarm] */
 							 &fsnotify_mark_srcu);
 	}
 	ret = 0;

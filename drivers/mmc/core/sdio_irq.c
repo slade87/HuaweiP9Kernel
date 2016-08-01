@@ -53,21 +53,31 @@ static int process_sdio_pending_irqs(struct mmc_host *host)
 		return ret;
 	}
 
+	if (pending && mmc_card_broken_irq_polling(card) &&
+	    !(host->caps & MMC_CAP_SDIO_IRQ)) {
+		unsigned char dummy;
+
+		/* A fake interrupt could be created when we poll SDIO_CCCR_INTx
+		 * register with a Marvell SD8797 card. A dummy CMD52 read to
+		 * function 0 register 0xff can avoid this.
+		 */
+		(void)mmc_io_rw_direct(card, 0, 0, 0xff, 0, &dummy);
+	}
+
 	count = 0;
 	for (i = 1; i <= 7; i++) {
 		if (pending & (1 << i)) {
 			func = card->sdio_func[i - 1];
 			if (!func) {
-				pr_warning("%s: pending IRQ for "
-					"non-existent function\n",
+				pr_warn("%s: pending IRQ for non-existent function\n",
 					mmc_card_id(card));
 				ret = -EINVAL;
 			} else if (func->irq_handler) {
 				func->irq_handler(func);
 				count++;
 			} else {
-				pr_warning("%s: pending IRQ with no handler\n",
-				       sdio_func_id(func));
+				pr_warn("%s: pending IRQ with no handler\n",
+					sdio_func_id(func));
 				ret = -EINVAL;
 			}
 		}
@@ -79,6 +89,15 @@ static int process_sdio_pending_irqs(struct mmc_host *host)
 	return ret;
 }
 
+void sdio_run_irqs(struct mmc_host *host)
+{
+	mmc_claim_host(host);
+	host->sdio_irq_pending = true;
+	process_sdio_pending_irqs(host);
+	mmc_release_host(host);
+}
+EXPORT_SYMBOL_GPL(sdio_run_irqs);
+
 static int sdio_irq_thread(void *_host)
 {
 	struct mmc_host *host = _host;
@@ -86,7 +105,7 @@ static int sdio_irq_thread(void *_host)
 	unsigned long period, idle_period;
 	int ret;
 
-	sched_setscheduler(current, SCHED_FIFO, &param);
+	(void)sched_setscheduler(current, SCHED_FIFO, &param);
 
 	/*
 	 * We want to allow for SDIO cards to work even on non SDIO
@@ -129,7 +148,7 @@ static int sdio_irq_thread(void *_host)
 		if (ret < 0) {
 			set_current_state(TASK_INTERRUPTIBLE);
 			if (!kthread_should_stop())
-				schedule_timeout(HZ);
+				(void)schedule_timeout(HZ);
 			set_current_state(TASK_RUNNING);
 		}
 
@@ -155,7 +174,7 @@ static int sdio_irq_thread(void *_host)
 			mmc_host_clk_release(host);
 		}
 		if (!kthread_should_stop())
-			schedule_timeout(period);
+			(void)schedule_timeout(period);
 		set_current_state(TASK_RUNNING);
 	} while (!kthread_should_stop());
 

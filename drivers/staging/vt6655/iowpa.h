@@ -134,7 +134,6 @@ struct viawget_scan_result {
 	int maxrate;
 };
 
-//2006-1116-01,<Add> by NomadZhao
 #pragma pack()
 /*---------------------  Export Classes  ----------------------------*/
 

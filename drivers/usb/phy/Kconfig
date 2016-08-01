@@ -16,6 +16,14 @@ menuconfig USB_PHY
 	  If you're not sure if this applies to you, it probably doesn't;
 	  say N here.
 
+config USB_OTG_WAKELOCK
+	bool "Hold a wakelock when USB connected"
+	depends on WAKELOCK
+	select USB_OTG_UTILS
+	help
+	  Select this to automatically hold a wakelock when USB is
+	  connected, preventing suspend.
+
 if USB_PHY
 
 #
@@ -198,7 +206,7 @@ config USB_RCAR_PHY
 
 config USB_ULPI
 	bool "Generic ULPI Transceiver Driver"
-	depends on ARM
+	depends on ARM || ARM64
 	help
 	  Enable this to support ULPI connected USB OTG transceivers which
 	  are likely found on embedded boards.
@@ -209,5 +217,27 @@ config USB_ULPI_VIEWPORT
 	help
 	  Provides read/write operations to the ULPI phy register set for
 	  controllers with a viewport register (e.g. Chipidea/ARC controllers).
+
+
+config HISI_USBPHY
+        tristate "HISI USB PHY Driver"
+        help
+          Enable this to support HISI USB phy helper driver for HISI SoCs.
+          This driver provides common interface to interact, for HISI USB 2.0 PHY
+          driver and later for HISI USB 3.0 PHY driver.
+
+config HISI_USB2PHY
+        tristate "HISI USB 2.0 PHY controller Driver"
+        select HISI_USBPHY
+        help
+          Enable this to support HISI USB 2.0 (High Speed) PHY controller
+          driver for HISI SoCs.
+
+config HISI_USB3PHY
+        tristate "HISI USB 3.0 PHY controller Driver"
+        select HISI_USBPHY
+        help
+          Enable this to support HISI USB 3.0 (Super Speed) phy controller
+          for samsung SoCs.
 
 endif # USB_PHY

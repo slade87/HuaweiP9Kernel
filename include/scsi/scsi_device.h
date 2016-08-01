@@ -142,7 +142,7 @@ struct scsi_device {
 	unsigned skip_ms_page_3f:1;	/* do not use MODE SENSE page 0x3f */
 	unsigned skip_vpd_pages:1;	/* do not read VPD pages */
 	unsigned use_192_bytes_for_3f:1; /* ask for 192 bytes from page 0x3f */
-	unsigned no_start_on_add:1;	/* do not issue start on add */
+	unsigned no_start_on_add:1;
 	unsigned allow_restart:1; /* issue START_UNIT in error handler */
 	unsigned manage_start_stop:1;	/* Let HLD (sd) manage start/stop */
 	unsigned start_stop_pwr_cond:1;	/* Set power cond. in START_STOP_UNIT */

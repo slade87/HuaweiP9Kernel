@@ -1,26 +1,10 @@
-/*
- * Copyright © 1999-2010 David Woodhouse <dwmw2@infradead.org> et al.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- */
+
 
 #ifndef __MTD_ABI_H__
 #define __MTD_ABI_H__
 
 #include <linux/types.h>
+#include <linux/mtd/hisi_nve_interface.h>
 
 struct erase_info_user {
 	__u32 start;
@@ -115,12 +99,13 @@ struct mtd_write_req {
 #define MTD_NANDECC_PLACE	1	// Use the given placement in the structure (YAFFS1 legacy mode)
 #define MTD_NANDECC_AUTOPLACE	2	// Use the default placement scheme
 #define MTD_NANDECC_PLACEONLY	3	// Use the given placement in the structure (Do not store ecc result on read)
-#define MTD_NANDECC_AUTOPL_USR 	4	// Use the given autoplacement scheme rather than using the default
+#define MTD_NANDECC_AUTOPL_USR	4	// Use the given autoplacement scheme rather than using the default
 
 /* OTP mode selection */
 #define MTD_OTP_OFF		0
 #define MTD_OTP_FACTORY		1
 #define MTD_OTP_USER		2
+
 
 struct mtd_info_user {
 	__u8 type;
@@ -145,6 +130,7 @@ struct otp_info {
 	__u32 length;
 	__u32 locked;
 };
+
 
 /*
  * Note, the following ioctl existed in the past and was removed:
@@ -202,6 +188,7 @@ struct otp_info {
  * without OOB, e.g., NOR flash.
  */
 #define MEMWRITE		_IOWR('M', 24, struct mtd_write_req)
+#define NVEACCESSDATA           _IOWR('M', 25, struct hisi_nve_info_user)
 
 /*
  * Obsolete legacy interface. Keep it in order not to break userspace

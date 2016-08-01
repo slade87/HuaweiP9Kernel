@@ -119,6 +119,19 @@
 #include <linux/mroute.h>
 #endif
 
+#ifdef CONFIG_ANDROID_PARANOID_NETWORK
+#include <linux/android_aid.h>
+
+static inline int current_has_network(void)
+{
+	return in_egroup_p(AID_INET) || capable(CAP_NET_RAW);
+}
+#else
+static inline int current_has_network(void)
+{
+	return 1;
+}
+#endif
 
 /* The inetsw table contains everything that inet_create needs to
  * build a new socket.
@@ -284,6 +297,9 @@ static int inet_create(struct net *net, struct socket *sock, int protocol,
 	int try_loading_module = 0;
 	int err;
 
+	if (!current_has_network())
+		return -EACCES;
+
 	if (unlikely(!inet_ehash_secret))
 		if (sock->type != SOCK_RAW && sock->type != SOCK_DGRAM)
 			build_ehash_secret();
@@ -336,8 +352,7 @@ lookup_protocol:
 	}
 
 	err = -EPERM;
-	if (sock->type == SOCK_RAW && !kern &&
-	    !ns_capable(net->user_ns, CAP_NET_RAW))
+	if (sock->type == SOCK_RAW && !kern && !capable(CAP_NET_RAW))
 		goto out_rcu_unlock;
 
 	sock->ops = answer->ops;
@@ -428,6 +443,9 @@ int inet_release(struct socket *sock)
 	if (sk) {
 		long timeout;
 
+#ifdef CONFIG_HUAWEI_BASTET
+		bastet_inet_release(sk);
+#endif
 		sock_rps_reset_flow(sk);
 
 		/* Applications forget to leave groups before exiting */
@@ -800,6 +818,11 @@ int inet_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 
 	err = sk->sk_prot->recvmsg(iocb, sk, msg, size, flags & MSG_DONTWAIT,
 				   flags & ~MSG_DONTWAIT, &addr_len);
+
+#ifdef CONFIG_HUAWEI_BASTET
+	err = bastet_block_recv(iocb, sock, msg, size, flags, &addr_len, err);
+#endif
+
 	if (err >= 0)
 		msg->msg_namelen = addr_len;
 	return err;
@@ -905,6 +928,7 @@ int inet_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 	case SIOCSIFPFLAGS:
 	case SIOCGIFPFLAGS:
 	case SIOCSIFFLAGS:
+	case SIOCKILLADDR:
 		err = devinet_ioctl(net, cmd, (void __user *)arg);
 		break;
 	default:
@@ -1591,6 +1615,12 @@ static __net_init int ipv4_mib_init_net(struct net *net)
 			  sizeof(struct tcp_mib),
 			  __alignof__(struct tcp_mib)) < 0)
 		goto err_tcp_mib;
+#ifdef CONFIG_HW_WIFIPRO
+    if (snmp_mib_init((void __percpu **)net->mib.wifipro_tcp_statistics,
+              sizeof(struct wifipro_tcp_mib),
+              __alignof__(struct wifipro_tcp_mib)) < 0)
+        goto err_wifipro_tcp_mib;
+#endif
 	if (snmp_mib_init((void __percpu **)net->mib.ip_statistics,
 			  sizeof(struct ipstats_mib),
 			  __alignof__(struct ipstats_mib)) < 0)
@@ -1631,6 +1661,10 @@ err_net_mib:
 	snmp_mib_free((void __percpu **)net->mib.ip_statistics);
 err_ip_mib:
 	snmp_mib_free((void __percpu **)net->mib.tcp_statistics);
+#ifdef CONFIG_HW_WIFIPRO
+err_wifipro_tcp_mib:
+    snmp_mib_free((void __percpu **)net->mib.wifipro_tcp_statistics);
+#endif
 err_tcp_mib:
 	return -ENOMEM;
 }
@@ -1643,6 +1677,10 @@ static __net_exit void ipv4_mib_exit_net(struct net *net)
 	snmp_mib_free((void __percpu **)net->mib.udp_statistics);
 	snmp_mib_free((void __percpu **)net->mib.net_statistics);
 	snmp_mib_free((void __percpu **)net->mib.ip_statistics);
+#ifdef CONFIG_HW_WIFIPRO
+    snmp_mib_free((void __percpu **)net->mib.wifipro_tcp_statistics);
+#endif
+
 	snmp_mib_free((void __percpu **)net->mib.tcp_statistics);
 }
 

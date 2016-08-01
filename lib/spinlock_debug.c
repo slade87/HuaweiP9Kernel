@@ -12,6 +12,9 @@
 #include <linux/debug_locks.h>
 #include <linux/delay.h>
 #include <linux/export.h>
+#include <linux/bug.h>
+
+#include <asm/cacheflush.h>
 
 void __raw_spin_lock_init(raw_spinlock_t *lock, const char *name,
 			  struct lock_class_key *key)
@@ -64,6 +67,7 @@ static void spin_dump(raw_spinlock_t *lock, const char *msg)
 		owner ? owner->comm : "<none>",
 		owner ? task_pid_nr(owner) : -1,
 		lock->owner_cpu);
+	BUG_ON(PANIC_CORRUPTION);
 	dump_stack();
 }
 
@@ -103,6 +107,10 @@ static inline void debug_spin_unlock(raw_spinlock_t *lock)
 	lock->owner_cpu = -1;
 }
 
+int g_logbuf_lock_flag = 0x55;
+extern raw_spinlock_t *g_logbuf_lock_ex;
+raw_spinlock_t g_logbuf_lock_panic;
+
 static void __spin_lock_debug(raw_spinlock_t *lock)
 {
 	u64 i;
@@ -112,6 +120,14 @@ static void __spin_lock_debug(raw_spinlock_t *lock)
 		if (arch_spin_trylock(&lock->raw_lock))
 			return;
 		__delay(1);
+	}
+
+	if (g_logbuf_lock_ex == lock) {
+		g_logbuf_lock_flag = 0xAA;
+		memcpy(&g_logbuf_lock_panic, lock, sizeof(raw_spinlock_t));
+		flush_cache_all();
+		smp_send_stop();
+		while(1);
 	}
 	/* lockup suspected: */
 	spin_dump(lock, "lockup suspected");

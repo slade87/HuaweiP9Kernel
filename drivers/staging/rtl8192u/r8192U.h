@@ -100,7 +100,7 @@ do { if(rt_global_debug_component & component) \
 
 #define COMP_RECV				BIT3		// Receive data path.
 #define COMP_SEND				BIT4		// Send part path.
-#define COMP_IO					BIT5		// I/O Related. Added by Annie, 2006-03-02.
+#define COMP_IO					BIT5
 #define COMP_POWER				BIT6		// 802.11 Power Save mode or System/Device Power state related.
 #define COMP_EPROM				BIT7		// 802.11 link related: join/start BSS, leave BSS.
 #define COMP_SWBW				BIT8	// For bandwidth switch.
@@ -119,7 +119,7 @@ do { if(rt_global_debug_component & component) \
 #define COMP_LED				BIT21	// For LED.
 #define COMP_RF					BIT22	// For RF.
 //1!!!!!!!!!!!!!!!!!!!!!!!!!!!
-#define COMP_RXDESC				BIT23	// Show Rx desc information for SD3 debug. Added by Annie, 2006-07-15.
+#define COMP_RXDESC				BIT23
 //1//1Attention Please!!!<11n or 8190 specific code should be put below this line>
 //1!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -979,7 +979,7 @@ typedef struct r8192_priv {
 	u16	ShortRetryLimit;
 	u16	LongRetryLimit;
 	u32	TransmitConfig;
-	u8	RegCWinMin;		// For turbo mode CW adaptive. Added by Annie, 2005-10-27.
+	u8	RegCWinMin;
 
 	u32     LastRxDescTSFHigh;
 	u32     LastRxDescTSFLow;
@@ -1060,7 +1060,6 @@ typedef struct r8192_priv {
 	struct timer_list watch_dog_timer;
 
 //+by amy 080515 for dynamic mechenism
-	//Add by amy Tx Power Control for Near/Far Range 2008/05/15
 	bool	bdynamic_txpower;  //bDynamicTxPower
 	bool	bDynamicTxHighPower;  // Tx high power state
 	bool	bDynamicTxLowPower;  // Tx low power state
@@ -1078,7 +1077,6 @@ typedef struct r8192_priv {
 	bool			   btxpower_trackingInit;
 	u8			   OFDM_index;
 	u8			   CCK_index;
-	//2007/09/10 Mars Add CCK TX Power Tracking
 	ccktxbbgain_struct	cck_txbbgain_table[CCKTxBBGainTableLength];
 	ccktxbbgain_struct	cck_txbbgain_ch14_table[CCKTxBBGainTableLength];
 	u8 rfa_txpowertrackingindex;
@@ -1098,7 +1096,6 @@ typedef struct r8192_priv {
 	//For Backup Initial Gain
 	init_gain initgain_backup;
 	u8 DefaultInitialGain[4];
-	// For EDCA Turbo mode, Added by amy 080515.
 	bool		bis_any_nonbepkts;
 	bool		bcurrent_turbo_EDCA;
 	bool		bis_cur_rdlstate;
@@ -1112,7 +1109,6 @@ typedef struct r8192_priv {
 	u8	framesync;
 	u32	framesyncC34;
 	u8	framesyncMonitor;
-		//Added by amy 080516  for RX related
 	u16	nrxAMPDU_size;
 	u8	nrxAMPDU_aggr_num;
 

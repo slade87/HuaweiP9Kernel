@@ -178,7 +178,6 @@ typedef struct buffer
 	dma_addr_t dma;
 } buffer;
 
-//YJ,modified,080828
 typedef struct Stats
 {
 	unsigned long txrdu;
@@ -239,7 +238,6 @@ typedef struct _link_detect_t
 	bool				bBusyTraffic;    //when it is set to 1, UI cann't scan at will.
 }link_detect_t, *plink_detect_t;
 
-//YJ,modified,080828,end
 
 //by amy for led
 //================================================================================
@@ -298,7 +296,6 @@ enum	_ReasonCode{
 	auth_802_1x_fail= 0x17,
 	ciper_reject		= 0x18,
 
-	// Reason code defined in 7.3.1.7, 802.1e D13.0, p.42. Added by Annie, 2005-11-15.
 	QoS_unspec		= 0x20,	// 32
 	QAP_bandwidth	= 0x21,	// 33
 	poor_condition	= 0x22,	// 34
@@ -370,7 +367,7 @@ typedef struct r8180_priv
 	short promisc;
 	/*stats*/
 	struct Stats stats;
-	struct _link_detect_t link_detect;  //YJ,add,080828
+	struct _link_detect_t link_detect;
 	struct iw_statistics wstats;
 
 	/*RX stuff*/
@@ -509,7 +506,7 @@ typedef struct r8180_priv
 	long Stats_SignalQuality;
 	long RecvSignalPower; // in dBm.
 	long Stats_RecvSignalPower;
-	u8	 LastRxPktAntenna;	// +by amy 080312 Antenna which received the lasted packet. 0: Aux, 1:Main. Added by Roger, 2008.01.25.
+	u8	 LastRxPktAntenna;
 	u32 AdRxOkCnt;
 	long AdRxSignalStrength;
 	u8 CurrAntennaIndex;			// Index to current Antenna (both Tx and Rx).
@@ -526,19 +523,16 @@ typedef struct r8180_priv
 //{by amy 080312
 //
 	// Crystal calibration.
-	// Added by Roger, 2007.12.11.
 	//
 	bool		bXtalCalibration; // Crystal calibration.
 	u8			XtalCal_Xin; // Crystal calibration for Xin. 0~7.5pF
 	u8			XtalCal_Xout; // Crystal calibration for Xout. 0~7.5pF
 	//
 	// Tx power tracking with thermal meter indication.
-	// Added by Roger, 2007.12.11.
 	//
 	bool		bTxPowerTrack; // Tx Power tracking.
 	u8			ThermalMeter; // Thermal meter reference indication.
 	//
-	// Dynamic Initial Gain Adjustment Mechanism. Added by Bruce, 2007-02-14.
 	//
 	bool				bDigMechanism; // TRUE if DIG is enabled, FALSE ow.
 	bool				bRegHighPowerMechanism; // For High Power Mechanism. 061010, by rcnjko.
@@ -546,7 +540,6 @@ typedef struct r8180_priv
 	u8					RegDigOfdmFaUpTh; // Upper threshold of OFDM false alarm, which is used in DIG.
 	u8					DIG_NumberFallbackVote;
 	u8					DIG_NumberUpgradeVote;
-	// For HW antenna diversity, added by Roger, 2008.01.30.
 	u32			AdMainAntennaRxOkCnt;		// Main antenna Rx OK count.
 	u32			AdAuxAntennaRxOkCnt;		// Aux antenna Rx OK count.
 	bool		bHWAdSwitched;				// TRUE if we has switched default antenna by HW evaluation.
@@ -560,7 +553,6 @@ typedef struct r8180_priv
 	u8			CurCCKRSSI;
 	bool        bCurCCKPkt;
 	//
-	// High Power Mechanism. Added by amy, 080312.
 	//
 	bool					bToUpdateTxPwr;
 	long					UndecoratedSmoothedSS;
@@ -579,8 +571,8 @@ typedef struct r8180_priv
 	bool   bEnhanceTxPwr;
 	bool   bUpdateARFR;
 	int	   ForcedDataRate; // Force Data Rate. 0: Auto, 0x02: 1M ~ 0x6C: 54M.)
-	u32     NumTxUnicast; //YJ,add,080828,for keep alive
-	u8      keepAliveLevel; //YJ,add,080828,for KeepAlive
+	u32     NumTxUnicast;
+	u8      keepAliveLevel;
 	unsigned long 	NumTxOkTotal;
 	u16                                 LastRetryCnt;
         u16                                     LastRetryRate;

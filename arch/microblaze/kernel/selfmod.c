@@ -78,4 +78,4 @@ void selfmod_function(const int *arr_fce, const unsigned int base)
 		}
 	}
 	local_irq_restore(flags);
-} /* end of self-modified code */
+}

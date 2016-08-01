@@ -442,6 +442,12 @@ config MFD_PM8XXX_IRQ
 	  This is required to use certain other PM 8xxx features, such as GPIO
 	  and MPP.
 
+config MFD_R63306
+	tristate "Support R63306 Graphics Liquid Crystal Controller"
+	select MFD_CORE
+	help
+	  This supports for Renesas R63306 Graphics Liquid Crystal Controller.
+
 config MFD_RDC321X
 	tristate "RDC R-321x southbridge"
 	select MFD_CORE
@@ -1116,6 +1122,41 @@ config MFD_WM8994
 	  core support for the WM8994, in order to use the actual
 	  functionaltiy of the device other drivers must be enabled.
 
+config HI3XXX_HI6421V300_PMIC
+	tristate "HiSilicon Hi6421 PMU/Codec IC"
+	depends on OF
+	help
+	  This driver supports HiSilicon Hi6421 power management and codec IC,
+	  including regulators, codec, ADCs, Coulomb counter, etc. Memory
+	  mapped I/O ports are the way of communication with it.
+	  
+	  
+
+menuconfig HISI_HI6XXX_PMIC
+	tristate "HISI_HI6XXX_PMIC"
+	help
+
+
+if HISI_HI6XXX_PMIC
+
+config  HISI_HI6551_PMIC  
+		
+		bool "PMIC VERSION HISI_HI6551_PMIC"
+		---help---
+			If you define CONFIG_HISI_HI6552_PMIC£¬the build system define HISI_HI6XXX_PMIC
+			
+config  HISI_HI6552_PMIC  
+		
+		bool "PMIC VERSION HISI_HI6552_PMIC"
+		---help---
+			If you define CONFIG_HISI_HI6552_PMIC£¬the build system define HISI_HI6XXX_PMIC
+			
+config  HISI_HI6553_PMIC  		
+		bool "PMIC VERSION HISI_HI6553_PMIC"
+		---help---
+			If you define CONFIG_HISI_HI6553_PMIC£¬the build system define HISI_HI6XXX_PMIC
+endif
+
 endmenu
 endif
 
@@ -1144,7 +1185,98 @@ config MCP_UCB1200_TS
 endmenu
 
 config VEXPRESS_CONFIG
-	bool
+	bool "ARM Versatile Express platform infrastructure"
+	depends on ARM || ARM64
 	help
 	  Platform configuration infrastructure for the ARM Ltd.
 	  Versatile Express.
+
+config VEXPRESS_SPC
+	bool "Versatile Express SPC driver support"
+	depends on ARM
+	depends on VEXPRESS_CONFIG
+	help
+	  Serial Power Controller driver for ARM Ltd. test chips.
+
+
+config HI3XXX_HI3630_CORE
+	tristate "Control HiSilicon system interior area voltage"
+	depends on OF
+	help
+	  This driver control HiSilicon system interior area voltage  power management and codec IC,
+	  including regulators, codec, ADCs, Coulomb counter, etc. Memory
+	  mapped I/O ports are the way of communication with it.
+
+config HISI_IP_CORE
+	tristate "Control HiSilicon system interior area voltage"
+	depends on OF
+	help
+	  This driver control HiSilicon system interior area voltage  power management and codec IC,
+	  including regulators, codec, ADCs, Coulomb counter, etc. Memory
+	  mapped I/O ports are the way of communication with it.
+
+config HISI_IP_PMIC
+	tristate "Control HiSilicon system interior area voltage"
+	depends on OF
+	help
+	  This driver control HiSilicon system interior area voltage  power management and codec IC,
+	  including regulators, codec, ADCs, Coulomb counter, etc. Memory
+	  mapped I/O ports are the way of communication with it.
+
+config HISI_FREQ_AUTODOWN
+	tristate "Support HiSilicon Bus automatic frequency reduction"
+	depends on OF
+	help
+	Bus automatic frequency reduction is a method for reducing power consumption
+	of the chip is proposed, through the bus load automatically reduced frequency.
+
+config HISI_PMIC
+	tristate "HiSilicon Hisi PMU/Codec IC"
+	depends on OF
+	help
+	  This driver supports HiSilicon Hisi power management and codec IC,
+	  including regulators, codec, ADCs, Coulomb counter, etc. Memory
+	  mapped I/O ports are the way of communication with it.
+
+config HISI_PMIC_MNTN
+	tristate "HiSilicon Hisi Pmic Mntn"
+	depends on OF
+	help
+	  This driver supports HiSilicon Hisi power management and codec IC,
+	  including regulators, codec, ADCs, Coulomb counter, etc. Memory
+	  mapped I/O ports are the way of communication with it.
+
+config HUAWEI_VSYS_PWROFF_ABS_PD
+	bool "HiSilicon Hisi Pmic Mntn VSYS PWROFF ABS PD"
+	default n
+	help
+	  this config support config pmic VSYS_PWROFF_ABS_PD.
+
+config HISI_CHARGER_POWER
+	tristate "Hisi Charger Power"
+	depends on OF
+	help
+	  This driver including charger power.
+
+config MFD_HI6401_IRQ
+	tristate "Support HiSilicon Hi6401 Codec IC"
+	depends on OF
+	help
+	  This driver supports HiSilicon Hi6401  codec IC,
+	  including codec, ADCs, etc. Memory
+	  mapped I/O ports are the way of communication with it.
+
+config MFD_HI3630_ASP_IRQ
+	tristate "Support HiSilicon Hi3630 ASP"
+	depends on OF
+	help
+	  This driver supports HiSilicon Hi3630 ASP,
+	  including codec, ADCs, etc. Memory
+	  mapped I/O ports are the way of communication with it.
+config MFD_HI6402_IRQ
+	tristate "Support HiSilicon Hi6402 Codec IC"
+	depends on OF
+	help
+	  This driver supports HiSilicon Hi6402  codec IC,
+	  including codec, ADCs, etc. Memory
+	  mapped I/O ports are the way of communication with it.

@@ -306,7 +306,6 @@ static void device_init_td0_ring(PSDevice pDevice);
 static void device_init_td1_ring(PSDevice pDevice);
 
 static int  device_dma0_tx_80211(struct sk_buff *skb, struct net_device *dev);
-//2008-0714<Add>by Mike Liu
 static bool device_release_WPADEV(PSDevice pDevice);
 
 static int  ethtool_ioctl(struct net_device *dev, void *useraddr);
@@ -594,7 +593,6 @@ static void device_init_registers(PSDevice pDevice, DEVICE_INIT_TYPE InitType)
 			pDevice->bDiversityEnable, (int)pDevice->ulDiversityNValue, (int)pDevice->ulDiversityMValue, pDevice->byTMax, pDevice->byTMax2);
 
 //#ifdef ZoneType_DefaultSetting
-//2008-8-4 <add> by chester
 //zonetype initial
 		pDevice->byOriginalZonetype = pDevice->abyEEPROM[EEP_OFS_ZONETYPE];
 		zonetype = Config_FileOperation(pDevice, false, NULL);
@@ -665,7 +663,6 @@ static void device_init_registers(PSDevice pDevice, DEVICE_INIT_TYPE InitType)
 			pDevice->abyCCKDefaultPwr[ii + 1] = byCCKPwrdBm;
 			pDevice->abyOFDMDefaultPwr[ii + 1] = byOFDMPwrdBm;
 		}
-		//2008-8-4 <add> by chester
 		//recover 12,13 ,14channel for EUROPE by 11 channel
 		if (((pDevice->abyEEPROM[EEP_OFS_ZONETYPE] == ZoneType_Japan) ||
 		     (pDevice->abyEEPROM[EEP_OFS_ZONETYPE] == ZoneType_Europe)) &&
@@ -736,7 +733,6 @@ static void device_init_registers(PSDevice pDevice, DEVICE_INIT_TYPE InitType)
 		if (pDevice->byRadioCtl & EEP_RADIOCTL_ENABLE) {
 			// Get GPIO
 			MACvGPIOIn(pDevice->PortOffset, &pDevice->byGPIO);
-//2008-4-14 <add> by chester for led issue
 #ifdef FOR_LED_ON_NOTEBOOK
 			if (pDevice->byGPIO & GPIO0_DATA) { pDevice->bHWRadioOff = true; }
 			if (!(pDevice->byGPIO & GPIO0_DATA)) { pDevice->bHWRadioOff = false; }
@@ -1116,10 +1112,8 @@ static void device_free_info(PSDevice pDevice) {
 	struct net_device *dev = pDevice->dev;
 
 	ASSERT(pDevice);
-//2008-0714-01<Add>by chester
 	device_release_WPADEV(pDevice);
 
-//2008-07-21-01<Add>by MikeLiu
 //unregister wpadev
 	if (wpa_set_wpadev(pDevice, 0) != 0)
 		printk("unregister wpadev fail?\n");
@@ -1734,7 +1728,6 @@ static int  device_open(struct net_device *dev) {
 	if (!device_init_rings(pDevice)) {
 		return -ENOMEM;
 	}
-//2008-5-13 <add> by chester
 	i = request_irq(pDevice->pcid->irq, &device_intr, IRQF_SHARED, dev->name, dev);
 	if (i)
 		return i;
@@ -1838,7 +1831,6 @@ static int  device_close(struct net_device *dev) {
 	mlme_kill = 0;
 #endif
 //PLICE_DEBUG<-
-//2007-1121-02<Add>by EinsnLiu
 	if (pDevice->bLinkPass) {
 		bScheduleCommand((void *)pDevice, WLAN_CMD_DISASSOCIATE, NULL);
 		mdelay(30);
@@ -1875,7 +1867,6 @@ static int  device_close(struct net_device *dev) {
 	BSSvClearNodeDBTable(pDevice, 0);
 	free_irq(dev->irq, dev);
 	pDevice->flags &= (~DEVICE_FLAGS_OPENED);
-	//2008-0714-01<Add>by chester
 	device_release_WPADEV(pDevice);
 //PLICE_DEBUG->
 	//tasklet_kill(&pDevice->RxMngWorkItem);
@@ -2371,7 +2362,7 @@ static int  device_xmit(struct sk_buff *skb, struct net_device *dev) {
 	pLastTD->pTDInfo->byFlags = 0;
 	pLastTD->pTDInfo->byFlags |= TD_FLAGS_NETIF_SKB;
 #ifdef TxInSleep
-	pDevice->nTxDataTimeCout = 0; //2008-8-21 chester <add> for send null packet
+	pDevice->nTxDataTimeCout = 0;
 #endif
 	if (AVAIL_TD(pDevice, TYPE_AC0DMA) <= 1) {
 		netif_stop_queue(dev);
@@ -2725,7 +2716,6 @@ static inline u32 ether_crc(int length, unsigned char *data)
 	return crc;
 }
 
-//2008-8-4 <add> by chester
 static int Config_FileGetParameter(unsigned char *string,
 				   unsigned char *dest, unsigned char *source)
 {
@@ -3118,7 +3108,6 @@ static int  device_ioctl(struct net_device *dev, struct ifreq *rq, int cmd) {
 */
 		break;
 
-//2008-0409-07, <Add> by Einsn Liu
 #ifdef WPA_SUPPLICANT_DRIVER_WEXT_SUPPORT
 	case SIOCSIWAUTH:
 		DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO " SIOCSIWAUTH \n");
@@ -3172,7 +3161,6 @@ static int  device_ioctl(struct net_device *dev, struct ifreq *rq, int cmd) {
 		break;
 
 #endif // #ifdef WPA_SUPPLICANT_DRIVER_WEXT_SUPPORT
-//End Add -- //2008-0409-07, <Add> by Einsn Liu
 
 	case IOCTL_CMD_TEST:
 

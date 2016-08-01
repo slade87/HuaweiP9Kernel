@@ -38,6 +38,10 @@
 #include <linux/kthread.h>
 #include <linux/ioport.h>
 #include <linux/acpi.h>
+#include <dsm/dsm_pub.h>
+
+extern void print_spi_registers(struct spi_master * master);
+extern void cleanup_spi(struct spi_master *master);
 
 static void spidev_release(struct device *dev)
 {
@@ -236,6 +240,7 @@ struct bus_type spi_bus_type = {
 };
 EXPORT_SYMBOL_GPL(spi_bus_type);
 
+static struct dsm_client *s_dev_spi_dsm_client = NULL;
 
 static int spi_drv_probe(struct device *dev)
 {
@@ -542,25 +547,38 @@ static void spi_pump_messages(struct kthread_work *work)
 
 	/* Lock queue and check for queue work */
 	spin_lock_irqsave(&master->queue_lock, flags);
+	/* Make sure we are not already running a message */
+	if (master->cur_msg) {
+		spin_unlock_irqrestore(&master->queue_lock, flags);
+		return;
+	}
+
+	/* If another context is idling the device then defer */
+	if (master->idling) {
+		queue_kthread_work(&master->kworker, &master->pump_messages);
+		spin_unlock_irqrestore(&master->queue_lock, flags);
+		return;
+	}
+
 	if (list_empty(&master->queue) || !master->running) {
 		if (!master->busy) {
 			spin_unlock_irqrestore(&master->queue_lock, flags);
 			return;
 		}
 		master->busy = false;
+		master->idling = true;
 		spin_unlock_irqrestore(&master->queue_lock, flags);
 		if (master->unprepare_transfer_hardware &&
 		    master->unprepare_transfer_hardware(master))
 			dev_err(&master->dev,
 				"failed to unprepare transfer hardware\n");
-		return;
-	}
 
-	/* Make sure we are not already running a message */
-	if (master->cur_msg) {
+		spin_lock_irqsave(&master->queue_lock, flags);
+		master->idling = false;
 		spin_unlock_irqrestore(&master->queue_lock, flags);
 		return;
 	}
+
 	/* Extract head of queue */
 	master->cur_msg =
 	    list_entry(master->queue.next, struct spi_message, queue);
@@ -584,7 +602,9 @@ static void spi_pump_messages(struct kthread_work *work)
 	ret = master->transfer_one_message(master, master->cur_msg);
 	if (ret) {
 		dev_err(&master->dev,
-			"failed to transfer one message from queue\n");
+			"failed to transfer one message from queue: %d\n", ret);
+		master->cur_msg->status = ret;
+		spi_finalize_current_message(master);
 		return;
 	}
 }
@@ -1501,30 +1521,82 @@ static void spi_complete(void *arg)
 	complete(arg);
 }
 
-static int __spi_sync(struct spi_device *spi, struct spi_message *message,
-		      int bus_locked)
+extern int get_spi_client(struct dsm_client **dev);
+
+void dev_spi_dsm_client_notify(const char* content, int errNum, struct spi_device *spi) {
+#ifdef CONFIG_HUAWEI_DSM
+    if (s_dev_spi_dsm_client == NULL) {
+        if(spi)
+            dev_err(&spi->dev, "spi dev_spi_dsm_client == NULL, get client\n");
+        else
+            pr_err("spi dev_spi_dsm_client == NULL, get client\n");
+        get_spi_client(&s_dev_spi_dsm_client);
+    }
+
+    if(s_dev_spi_dsm_client && !dsm_client_ocuppy(s_dev_spi_dsm_client)) {
+        if(content) {
+            dsm_client_record(s_dev_spi_dsm_client, "%s \n", content);
+        }
+        dsm_client_notify(s_dev_spi_dsm_client, errNum);
+        if(spi)
+            dev_err(&spi->dev, "spi dsm_client_notify OK\n ");
+        else
+            pr_err("spi dsm_client_notify OK\n ");
+    } else {
+        if (s_dev_spi_dsm_client == NULL) {
+            if(spi)
+                dev_err(&spi->dev, "dev_spi_dsm_client register fialed.\n");
+        }
+        else if (dsm_client_ocuppy(s_dev_spi_dsm_client)) {
+            if(spi)
+                dev_err(&spi->dev, "dsm_client_ocuppy.\n");
+            else
+                pr_err("dsm_client_ocuppy.\n ");
+        }
+    }
+#endif
+}
+
+static int __spi_sync(struct spi_device *spi, struct spi_message *message, int bus_locked)
 {
-	DECLARE_COMPLETION_ONSTACK(done);
-	int status;
-	struct spi_master *master = spi->master;
+    DECLARE_COMPLETION_ONSTACK(done);
+    int status;
+    struct spi_master *master = spi->master;
+    unsigned long remain_time;
 
-	message->complete = spi_complete;
-	message->context = &done;
+    message->complete = spi_complete;
+    message->context = &done;
 
-	if (!bus_locked)
-		mutex_lock(&master->bus_lock_mutex);
+    if (!bus_locked)
+        mutex_lock(&master->bus_lock_mutex);
 
-	status = spi_async_locked(spi, message);
+    status = spi_async_locked(spi, message);
 
-	if (!bus_locked)
-		mutex_unlock(&master->bus_lock_mutex);
+    if (!bus_locked)
+        mutex_unlock(&master->bus_lock_mutex);
 
-	if (status == 0) {
-		wait_for_completion(&done);
-		status = message->status;
-	}
-	message->context = NULL;
-	return status;
+    if (status == 0) {
+        remain_time = wait_for_completion_timeout(&done, msecs_to_jiffies(20000));
+        status = message->status;
+        if (0 == remain_time) {
+            dev_err(&spi->dev, "message status=%d,spi driver wait for completion timeout\n", message->status);
+            dev_spi_dsm_client_notify("spi driver wait for completion timeout\n", DSM_SPI_ERROR_NO, spi);
+            status = -ETIME;
+            print_spi_registers(master);
+            cleanup_spi(master);
+        }
+    } else if (-ESHUTDOWN == status) {
+        dev_err(&spi->dev, "spi shutdown error\n");
+        dev_spi_dsm_client_notify("spi driver shut down\n", DSM_SPI_SHUTDOWN_ERR_NO, spi);
+    }else if(-EINVAL == status) {
+        dev_err(&spi->dev, "spi invalid argument error\n");
+        dev_spi_dsm_client_notify("spi driver invalid argument\n", DSM_SPI_INVALID_ARGUMENT_ERR_NO, spi);
+    }else {
+        dev_err(&spi->dev, "spi unkown error!\n");
+        dev_spi_dsm_client_notify("spi driver unkown error\n", DSM_SPI_UNKOWN_ERR_NO, spi);
+    }
+    message->context = NULL;
+    return status;
 }
 
 /**

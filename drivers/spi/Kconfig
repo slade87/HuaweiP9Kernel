@@ -35,6 +35,9 @@ config SPI_DEBUG
 	  Say "yes" to enable debug messaging (like dev_dbg and pr_debug),
 	  sysfs, and debugfs support in SPI controller and protocol drivers.
 
+config HISI_SPI
+	bool "hisi spi"
+	default n
 #
 # MASTER side ... talking to discrete SPI slave chips including microcontrollers
 #
@@ -52,6 +55,11 @@ config SPI_MASTER
 if SPI_MASTER
 
 comment "SPI Master Controller Drivers"
+
+
+config SPIDEV_SUPPORT_HI3660
+        bool "spidev support chicago"
+        default n
 
 config SPI_ALTERA
 	tristate "Altera SPI Controller"

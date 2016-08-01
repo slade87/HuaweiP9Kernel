@@ -13,6 +13,10 @@
 #include <linux/gfp.h>
 #include <linux/slab.h>
 #include <linux/percpu.h>
+#include <linux/acpi.h>
+#include <linux/of.h>
+#include <linux/cpufeature.h>
+#include <linux/cpuidle.h>
 
 #include "base.h"
 
@@ -23,7 +27,9 @@ struct bus_type cpu_subsys = {
 EXPORT_SYMBOL_GPL(cpu_subsys);
 
 static DEFINE_PER_CPU(struct device *, cpu_sys_devices);
-
+#ifdef ACPU_32_BIT_CPUILDE
+extern void clr_cluster_idle_bit(unsigned int cluster);
+#endif
 #ifdef CONFIG_HOTPLUG_CPU
 static void change_cpu_under_node(struct cpu *cpu,
 			unsigned int from_nid, unsigned int to_nid)
@@ -43,6 +49,22 @@ static ssize_t show_online(struct device *dev,
 	return sprintf(buf, "%u\n", !!cpu_online(cpu->dev.id));
 }
 
+#ifdef CONFIG_ARCH_HISI
+static DEFINE_MUTEX(hisi_cpu_hotplug_driver_mutex);
+
+void hisi_cpu_hotplug_lock(void)
+{
+	mutex_lock(&hisi_cpu_hotplug_driver_mutex);
+}
+EXPORT_SYMBOL(hisi_cpu_hotplug_lock);
+
+void hisi_cpu_hotplug_unlock(void)
+{
+	mutex_unlock(&hisi_cpu_hotplug_driver_mutex);
+}
+EXPORT_SYMBOL(hisi_cpu_hotplug_unlock);
+#endif
+
 static ssize_t __ref store_online(struct device *dev,
 				  struct device_attribute *attr,
 				  const char *buf, size_t count)
@@ -52,16 +74,33 @@ static ssize_t __ref store_online(struct device *dev,
 	int from_nid, to_nid;
 	ssize_t ret;
 
+#ifdef CONFIG_ARCH_HISI
+	hisi_cpu_hotplug_lock();
+#endif
+
 	cpu_hotplug_driver_lock();
 	switch (buf[0]) {
 	case '0':
+		cpuidle_pause();
+
 		ret = cpu_down(cpuid);
+		cpuidle_resume();
+		kick_all_cpus_sync();
 		if (!ret)
 			kobject_uevent(&dev->kobj, KOBJ_OFFLINE);
 		break;
 	case '1':
+#ifdef CONFIG_HISI_BIG_MAXFREQ_HOTPLUG
+		if(cpufreq_hotplugged(cpuid)) {
+			ret = 0;
+			break;
+		}
+#endif
 		from_nid = cpu_to_node(cpuid);
+		cpuidle_pause();
 		ret = cpu_up(cpuid);
+		cpuidle_resume();
+		kick_all_cpus_sync();
 
 		/*
 		 * When hot adding memory to memoryless node and enabling a cpu
@@ -78,6 +117,10 @@ static ssize_t __ref store_online(struct device *dev,
 		ret = -EINVAL;
 	}
 	cpu_hotplug_driver_unlock();
+
+#ifdef CONFIG_ARCH_HISI
+	hisi_cpu_hotplug_unlock();
+#endif
 
 	if (ret >= 0)
 		ret = count;
@@ -260,6 +303,45 @@ static void cpu_device_release(struct device *dev)
 	 */
 }
 
+#ifdef CONFIG_HAVE_CPU_AUTOPROBE
+#ifdef CONFIG_GENERIC_CPU_AUTOPROBE
+static ssize_t print_cpu_modalias(struct device *dev,
+				  struct device_attribute *attr,
+				  char *buf)
+{
+	ssize_t n;
+	u32 i;
+
+	n = sprintf(buf, "cpu:type:" CPU_FEATURE_TYPEFMT ":feature:",
+		    CPU_FEATURE_TYPEVAL);
+
+	for (i = 0; i < MAX_CPU_FEATURES; i++)
+		if (cpu_have_feature(i)) {
+			if (PAGE_SIZE < n + sizeof(",XXXX\n")) {
+				WARN(1, "CPU features overflow page\n");
+				break;
+			}
+			n += sprintf(&buf[n], ",%04X", i);
+		}
+	buf[n++] = '\n';
+	return n;
+}
+#else
+#define print_cpu_modalias	arch_print_cpu_modalias
+#endif
+
+static int cpu_uevent(struct device *dev, struct kobj_uevent_env *env)
+{
+	char *buf = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	if (buf) {
+		print_cpu_modalias(NULL, NULL, buf);
+		add_uevent_var(env, "MODALIAS=%s", buf);
+		kfree(buf);
+	}
+	return 0;
+}
+#endif
+
 /*
  * register_cpu - Setup a sysfs device for a CPU.
  * @cpu - cpu->hotpluggable field set to 1 will generate a control file in
@@ -277,8 +359,9 @@ int __cpuinit register_cpu(struct cpu *cpu, int num)
 	cpu->dev.id = num;
 	cpu->dev.bus = &cpu_subsys;
 	cpu->dev.release = cpu_device_release;
-#ifdef CONFIG_ARCH_HAS_CPU_AUTOPROBE
-	cpu->dev.bus->uevent = arch_cpu_uevent;
+	cpu->dev.of_node = of_get_cpu_node(num, NULL);
+#ifdef CONFIG_HAVE_CPU_AUTOPROBE
+	cpu->dev.bus->uevent = cpu_uevent;
 #endif
 	error = device_register(&cpu->dev);
 	if (!error && cpu->hotpluggable)
@@ -307,8 +390,8 @@ struct device *get_cpu_device(unsigned cpu)
 }
 EXPORT_SYMBOL_GPL(get_cpu_device);
 
-#ifdef CONFIG_ARCH_HAS_CPU_AUTOPROBE
-static DEVICE_ATTR(modalias, 0444, arch_print_cpu_modalias, NULL);
+#ifdef CONFIG_HAVE_CPU_AUTOPROBE
+static DEVICE_ATTR(modalias, 0444, print_cpu_modalias, NULL);
 #endif
 
 static struct attribute *cpu_root_attrs[] = {
@@ -321,7 +404,7 @@ static struct attribute *cpu_root_attrs[] = {
 	&cpu_attrs[2].attr.attr,
 	&dev_attr_kernel_max.attr,
 	&dev_attr_offline.attr,
-#ifdef CONFIG_ARCH_HAS_CPU_AUTOPROBE
+#ifdef CONFIG_HAVE_CPU_AUTOPROBE
 	&dev_attr_modalias.attr,
 #endif
 	NULL

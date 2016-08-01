@@ -241,7 +241,7 @@ void cfg80211_stop_p2p_device(struct cfg80211_registered_device *rdev,
 		WARN_ON(!busy);
 
 		rdev->scan_req->aborted = true;
-		___cfg80211_scan_done(rdev, !busy);
+		___cfg80211_scan_done(rdev, false);
 	}
 }
 
@@ -775,6 +775,7 @@ void wiphy_rfkill_set_hw_state(struct wiphy *wiphy, bool blocked)
 }
 EXPORT_SYMBOL(wiphy_rfkill_set_hw_state);
 
+#if 0
 static void wdev_cleanup_work(struct work_struct *work)
 {
 	struct wireless_dev *wdev;
@@ -787,7 +788,7 @@ static void wdev_cleanup_work(struct work_struct *work)
 
 	if (WARN_ON(rdev->scan_req && rdev->scan_req->wdev == wdev)) {
 		rdev->scan_req->aborted = true;
-		___cfg80211_scan_done(rdev, true);
+		___cfg80211_scan_done(rdev, false);
 	}
 
 	if (WARN_ON(rdev->sched_scan_req &&
@@ -804,6 +805,7 @@ static void wdev_cleanup_work(struct work_struct *work)
 
 	dev_put(wdev->netdev);
 }
+#endif
 
 void cfg80211_unregister_wdev(struct wireless_dev *wdev)
 {
@@ -913,7 +915,7 @@ static int cfg80211_netdev_notifier_call(struct notifier_block *nb,
 		 * are added with nl80211.
 		 */
 		mutex_init(&wdev->mtx);
-		INIT_WORK(&wdev->cleanup_work, wdev_cleanup_work);
+		//INIT_WORK(&wdev->cleanup_work, wdev_cleanup_work);
 		INIT_LIST_HEAD(&wdev->event_list);
 		spin_lock_init(&wdev->event_lock);
 		INIT_LIST_HEAD(&wdev->mgmt_registrations);
@@ -959,7 +961,23 @@ static int cfg80211_netdev_notifier_call(struct notifier_block *nb,
 	case NETDEV_DOWN:
 		cfg80211_update_iface_num(rdev, wdev->iftype, -1);
 		dev_hold(dev);
-		queue_work(cfg80211_wq, &wdev->cleanup_work);
+
+		pr_err("WIFI_DBG %s do scan done.\n", __FUNCTION__);
+		if (WARN_ON(rdev->scan_req && rdev->scan_req->wdev == wdev)) {
+			rdev->scan_req->aborted = true;
+			___cfg80211_scan_done(rdev, false);
+		}
+
+		if (WARN_ON(rdev->sched_scan_req &&
+			    rdev->sched_scan_req->dev == wdev->netdev)) {
+			__cfg80211_stop_sched_scan(rdev, false);
+		}
+
+		mutex_lock(&rdev->devlist_mtx);
+		rdev->opencount--;
+		mutex_unlock(&rdev->devlist_mtx);
+		wake_up(&rdev->dev_wait);
+		dev_put(wdev->netdev);
 		break;
 	case NETDEV_UP:
 		/*
@@ -968,12 +986,13 @@ static int cfg80211_netdev_notifier_call(struct notifier_block *nb,
 		 * if it was pending, in which case we need to account
 		 * for some of the work it would have done.
 		 */
+		 /*
 		if (cancel_work_sync(&wdev->cleanup_work)) {
 			mutex_lock(&rdev->devlist_mtx);
 			rdev->opencount--;
 			mutex_unlock(&rdev->devlist_mtx);
 			dev_put(dev);
-		}
+		}*/
 		cfg80211_update_iface_num(rdev, wdev->iftype, 1);
 		cfg80211_lock_rdev(rdev);
 		mutex_lock(&rdev->devlist_mtx);

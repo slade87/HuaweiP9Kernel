@@ -617,6 +617,9 @@ struct sysfs_dirent *sysfs_find_dirent(struct sysfs_dirent *parent_sd,
 	struct rb_node *node = parent_sd->s_dir.children.rb_node;
 	unsigned int hash;
 
+	if(!parent_sd)
+		return NULL;
+
 	if (!!sysfs_ns_type(parent_sd) != !!ns) {
 		WARN(1, KERN_WARNING "sysfs: ns %s in '%s' for '%s'\n",
 			sysfs_ns_type(parent_sd)? "required": "invalid",

@@ -21,6 +21,7 @@ config X86_64
 config X86
 	def_bool y
 	select ARCH_HAS_DEBUG_STRICT_USER_COPY_CHECKS
+	select ARCH_HAS_GCOV_PROFILE_ALL
 	select HAVE_AOUT if X86_32
 	select HAVE_UNSTABLE_SCHED_CLOCK
 	select ARCH_SUPPORTS_NUMA_BALANCING
@@ -122,6 +123,7 @@ config X86
 	select COMPAT_OLD_SIGACTION if IA32_EMULATION
 	select RTC_LIB
 	select ARCH_SUPPORTS_ATOMIC_RMW
+    select OF
 
 config INSTRUCTION_DECODER
 	def_bool y
@@ -206,6 +208,12 @@ config ARCH_HIBERNATION_POSSIBLE
 	def_bool y
 
 config ARCH_SUSPEND_POSSIBLE
+	def_bool y
+
+config ARCH_WANT_HUGE_PMD_SHARE
+	def_bool y
+
+config ARCH_WANT_GENERAL_HUGETLB
 	def_bool y
 
 config ZONE_DMA32
@@ -2347,6 +2355,10 @@ config X86_DEV_DMA_OPS
 config X86_DMA_REMAP
 	bool
 	depends on STA2X11
+
+config LLT_TEST
+	bool "HW LLT_TEST TEST"
+	default y
 
 source "net/Kconfig"
 

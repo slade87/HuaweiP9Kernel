@@ -241,3 +241,39 @@ config VIDEO_MEM2MEM_TESTDEV
 	  This is a virtual test device for the memory-to-memory driver
 	  framework.
 endif #V4L_TEST_DRIVERS
+
+menuconfig VIDEO_HISI_CAMERA
+	bool "Hisilicon Camera multimedia devices"
+	depends on MEDIA_CONTROLLER
+	default n
+	---help---
+	  Say Y here to enable Hisilicon Camera/V4L2 Features support
+
+if VIDEO_HISI_CAMERA
+
+source "drivers/media/platform/ovisp23/Kconfig"
+
+endif #VIDEO_HISI_CAMERA
+
+menuconfig VIDEO_HI6210_CAMERA
+	bool "HI6210 Camera Devices"
+	depends on MEDIA_CONTROLLER
+	default n
+	---help---
+	  Say Y here to enable Hisilicon Camera/V4L2 Features support
+
+if VIDEO_HI6210_CAMERA
+source "drivers/media/platform/ovisp22/capture/Kconfig"
+endif
+
+menuconfig VIDEO_HI6210_FAKE_CAMERA
+	bool "HI6210 Fake camera devices"
+	depends on MEDIA_CONTROLLER && VIDEO_HI6210_CAMERA
+	default n
+	---help---
+	  Say Y here to enable Hisilicon Camera Fake Features support
+
+if VIDEO_HI6210_FAKE_CAMERA
+source "drivers/media/platform/ovisp22/fake_capture/Kconfig"
+endif
+

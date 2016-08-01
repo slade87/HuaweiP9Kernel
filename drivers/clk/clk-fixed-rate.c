@@ -15,7 +15,9 @@
 #include <linux/io.h>
 #include <linux/err.h>
 #include <linux/of.h>
-
+#ifdef CONFIG_HISI_CLK
+#include <linux/clkdev.h>
+#endif
 /*
  * DOC: basic fixed-rate clock that cannot gate
  *
@@ -27,7 +29,6 @@
  */
 
 #define to_clk_fixed_rate(_hw) container_of(_hw, struct clk_fixed_rate, hw)
-
 static unsigned long clk_fixed_rate_recalc_rate(struct clk_hw *hw,
 		unsigned long parent_rate)
 {
@@ -80,6 +81,24 @@ struct clk *clk_register_fixed_rate(struct device *dev, const char *name,
 
 	return clk;
 }
+EXPORT_SYMBOL_GPL(clk_register_fixed_rate);
+
+#ifdef CONFIG_HISI_CLK
+int IS_FPGA(void)
+{
+    static int flag_diff_fpga_asic = -1;
+    if(flag_diff_fpga_asic == -1){
+        if(of_find_node_by_name(NULL, "fpga")){
+            flag_diff_fpga_asic = 1;
+        }
+        else{
+            flag_diff_fpga_asic = 0;
+        }
+   }
+   return flag_diff_fpga_asic;
+}
+EXPORT_SYMBOL_GPL(IS_FPGA);
+#endif
 
 #ifdef CONFIG_OF
 /**
@@ -93,12 +112,14 @@ void of_fixed_clk_setup(struct device_node *node)
 
 	if (of_property_read_u32(node, "clock-frequency", &rate))
 		return;
-
+	/*PMU 32k-clk: hi6553(32764), hi6552(32000) */
 	of_property_read_string(node, "clock-output-names", &clk_name);
-
 	clk = clk_register_fixed_rate(NULL, clk_name, NULL, CLK_IS_ROOT, rate);
 	if (!IS_ERR(clk))
 		of_clk_add_provider(node, of_clk_src_simple_get, clk);
+#ifdef CONFIG_HISI_CLK
+	clk_register_clkdev(clk, clk_name, NULL);
+#endif
 }
 EXPORT_SYMBOL_GPL(of_fixed_clk_setup);
 CLK_OF_DECLARE(fixed_clk, "fixed-clock", of_fixed_clk_setup);

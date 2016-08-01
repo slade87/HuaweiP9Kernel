@@ -1,26 +1,4 @@
-/*
- * Merged with mainline ieee80211.h in Aug 2004.  Original ieee802_11
- * remains copyright by the original authors
- *
- * Portions of the merged code are based on Host AP (software wireless
- * LAN access point) driver for Intersil Prism2/2.5/3.
- *
- * Copyright (c) 2001-2002, SSH Communications Security Corp and Jouni Malinen
- * <jkmaline@cc.hut.fi>
- * Copyright (c) 2002-2003, Jouni Malinen <jkmaline@cc.hut.fi>
- *
- * Adaption to a generic IEEE 802.11 stack by James Ketrenos
- * <jketreno@linux.intel.com>
- * Copyright (c) 2004, Intel Corporation
- *
- * Modified for Realtek's wi-fi cards by Andrea Merello
- * <andreamrl@tiscali.it>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation. See README and COPYING for
- * more details.
- */
+
 #ifndef IEEE80211_H
 #define IEEE80211_H
 #include <linux/if_ether.h> /* ETH_ALEN */
@@ -727,7 +705,6 @@ typedef struct _CHANNEL_LIST{
 #define IEEE80211_PS_UNICAST IEEE80211_DTIM_UCAST
 #define IEEE80211_PS_MBCAST IEEE80211_DTIM_MBCAST
 #define IEEE80211_PS_ENABLE   IEEE80211_DTIM_VALID
-//added by David for QoS 2006/6/30
 //#define WMM_Hang_8187
 #ifdef WMM_Hang_8187
 #undef WMM_Hang_8187
@@ -1012,8 +989,8 @@ struct ieee80211_device {
 	short wap_set;
 	short ssid_set;
 
-	u8  wpax_type_set;    //{added by David, 2006.9.28}
-	u32 wpax_type_notify; //{added by David, 2006.9.26}
+	u8  wpax_type_set;
+	u32 wpax_type_notify;
 
 	/* QoS related flag */
 	char init_wmmparam_flag;
@@ -1058,10 +1035,10 @@ struct ieee80211_device {
 	bool actscanning;
 	bool beinretry;
 	u16 ListenInterval;
-	unsigned long NumRxDataInPeriod; //YJ,add,080828
-	unsigned long NumRxBcnInPeriod;  //YJ,add,080828
+	unsigned long NumRxDataInPeriod;
+	unsigned long NumRxBcnInPeriod;
 	unsigned long NumRxOkTotal;
-	unsigned long NumRxUnicast;//YJ,add,080828,for keep alive
+	unsigned long NumRxUnicast;
 	bool bHwRadioOff;
         struct delayed_work softmac_scan_wq;
         struct delayed_work associate_retry_wq;
@@ -1076,7 +1053,6 @@ struct ieee80211_device {
 	struct delayed_work hw_dig_wq;
 	struct delayed_work tx_pw_wq;
 
-//Added for RF power on power off by lizhaoming 080512
 	struct delayed_work GPIOChangeRFWorkItem;
 
 	struct workqueue_struct *wq;
@@ -1374,7 +1350,6 @@ extern void ieee80211_ps_tx_ack(struct ieee80211_device *ieee, short success);
 extern void SendDisassociation(struct ieee80211_device *ieee,u8* asSta,u8 asRsn);
 extern void ieee80211_rtl_start_scan(struct ieee80211_device *ieee);
 
-//Add for RF power on power off by lizhaoming 080512
 extern void SendDisassociation(struct ieee80211_device *ieee,
        			 u8*                     asSta,
         		 u8                      asRsn);
@@ -1447,12 +1422,12 @@ extern void ieee80211_sta_ps_send_null_frame(struct ieee80211_device *ieee, shor
 
 extern const long ieee80211_wlan_frequencies[];
 
-static inline void ieee80211_increment_scans(struct ieee80211_device *ieee)
+extern inline void ieee80211_increment_scans(struct ieee80211_device *ieee)
 {
 	ieee->scans++;
 }
 
-static inline int ieee80211_get_scans(struct ieee80211_device *ieee)
+extern inline int ieee80211_get_scans(struct ieee80211_device *ieee)
 {
 	return ieee->scans;
 }

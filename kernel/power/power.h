@@ -246,6 +246,7 @@ static inline int suspend_freeze_processes(void)
 		return error;
 
 	error = freeze_kernel_threads();
+
 	/*
 	 * freeze_kernel_threads() thaws only kernel threads upon freezing
 	 * failure. So we have to thaw the userspace tasks ourselves.

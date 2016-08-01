@@ -657,7 +657,6 @@ void bch_bset_fix_lookup_table(struct btree *b, struct bkey *k)
 	if (t->size == b->sets->tree + bset_tree_space(b) - t->tree)
 		return;
 
-	/* Possibly add a new entry to the end of the lookup table */
 
 	for (k = table_to_bkey(t, t->size - 1);
 	     k != end(t->data);

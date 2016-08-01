@@ -178,7 +178,6 @@ BSSpSearchBSSList(
 		// ignore BSSID
 		for (ii = 0; ii < MAX_BSS_NUM; ii++) {
 			pCurrBSS = &(pMgmt->sBSSList[ii]);
-			//2007-0721-01<Add>by MikeLiu
 			pCurrBSS->bSelected = false;
 			if (pCurrBSS->bActive) {
 				if (pSSID != NULL) {
@@ -241,7 +240,6 @@ BSSpSearchBSSList(
 			pSelect->bSelected = true;
 /*
   if (pDevice->bRoaming == false)  {
-  //       Einsn Add @20070907
   memset(pbyDesireSSID, 0, WLAN_IEHDR_LEN + WLAN_SSID_MAXLEN + 1);
   memcpy(pbyDesireSSID,pCurrBSS->abySSID,WLAN_IEHDR_LEN + WLAN_SSID_MAXLEN + 1);
   }*/
@@ -941,7 +939,6 @@ BSSvAddMulticastNode(
  *    none.
  *
  -*/
-//2008-4-14 <add> by chester for led issue
 #ifdef FOR_LED_ON_NOTEBOOK
 bool cc = false;
 unsigned int status;
@@ -966,7 +963,6 @@ BSSvSecondCallBack(
 
 	pDevice->byERPFlag &=
 		~(WLAN_SET_ERP_BARKER_MODE(1) | WLAN_SET_ERP_NONERP_PRESENT(1));
-	//2008-4-14 <add> by chester for led issue
 #ifdef FOR_LED_ON_NOTEBOOK
 	MACvGPIOIn(pDevice->PortOffset, &pDevice->byGPIO);
 	if (((!(pDevice->byGPIO & GPIO0_DATA) && (pDevice->bHWRadioOff == false)) || ((pDevice->byGPIO & GPIO0_DATA) && (pDevice->bHWRadioOff == true))) && (cc == false)) {

@@ -1,4 +1,4 @@
-/*
+ /*
  * Remote processor messaging
  *
  * Copyright (C) 2011 Texas Instruments, Inc.
@@ -37,9 +37,11 @@
 
 #include <linux/types.h>
 #include <linux/device.h>
+#include <linux/platform_device.h>
 #include <linux/mod_devicetable.h>
 #include <linux/kref.h>
 #include <linux/mutex.h>
+#include <linux/of_gpio.h>
 
 /* The feature bitmap for virtio rpmsg */
 #define VIRTIO_RPMSG_F_NS	0 /* RP supports name service notifications */
@@ -328,5 +330,56 @@ int rpmsg_trysend_offchannel(struct rpmsg_channel *rpdev, u32 src, u32 dst,
 {
 	return rpmsg_send_offchannel_raw(rpdev, src, dst, data, len, false);
 }
+
+int rpmsg_sensor_ioctl(unsigned int cmd, int index, char* name);
+typedef enum {
+	RESET = 0,
+	POWERDOWN,
+	DPHY_TXRXZ,
+	DPHY_RSTZCAL,
+	CAM_1V05_EN,
+	CAM_1V2_EN,
+	CAM_1V8_EN,
+	CAM_2V85_EN,
+	CAM_VCM_2V85_EN,
+	CAM_VCM_POWER,
+	GPIO_MAX
+} gpio_type;
+typedef struct hwsensor_board_info
+{
+	char*                   sensor_name;
+	int                     camera_id;
+	int gpio_num;
+	struct gpio gpios[GPIO_MAX];
+    struct list_head        link;
+    void *psensor;
+} hwsensor_board_info;
+void rpmsg_sensor_unregister(void *ptr_sensor);
+int rpmsg_sensor_register(struct platform_device *pdev, void *psensor);
+int do_sensor_power_on(int index, const char *name);
+int do_sensor_power_off(int index, const char *name);
+
+extern int hisi_isp_rproc_device_mclk_config(unsigned int id, unsigned int clk, int on);
+extern int hisi_rproc_device_init(void);
+extern int hisi_rproc_select_def(void);
+extern int hisi_rproc_select_idle(void);
+extern int hisi_isp_dependent_clock_enable(void);
+extern int hisi_isp_dependent_clock_disable(void);
+/**
+ * enum rpmsg_client_choice- choose which rpmsg client driver for debug
+ *
+ * @ISP_DEBUG_RPMSG_CLIENT: use isp debug rpmsg client
+ * @INVALID_CLIENT: use hisp(new camera arch) rpmsg client
+ */
+enum rpmsg_client_choice {
+    ISP_DEBUG_RPMSG_CLIENT  = 0x1111,
+    INVALID_CLIENT          = 0xFFFF,
+};
+extern int rpmsg_client_debug;
+extern struct completion channel_sync;
+
+extern int hisi_isp_rproc_enable(void);
+extern int hisi_isp_rproc_disable(void);
+extern void rproc_set_sync_flag(bool);
 
 #endif /* _LINUX_RPMSG_H */

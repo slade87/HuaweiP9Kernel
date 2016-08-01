@@ -53,7 +53,7 @@ FILE *depfile; /* = NULL */
 struct srcfile_state *current_srcfile; /* = NULL */
 
 /* Detect infinite include recursion. */
-#define MAX_SRCFILE_DEPTH     (100)
+#define MAX_SRCFILE_DEPTH     (200)
 static int srcfile_depth; /* = 0 */
 
 
@@ -189,7 +189,6 @@ void srcfile_add_search_path(const char *dirname)
 	node->next = NULL;
 	node->dirname = xstrdup(dirname);
 
-	/* Add to the end of our list */
 	if (search_path_tail)
 		*search_path_tail = node;
 	else

@@ -23,6 +23,7 @@
 #include <linux/slab.h>
 
 #include <asm/cputype.h>
+#include <asm/smp_plat.h>
 #include <asm/topology.h>
 
 /*
@@ -42,7 +43,7 @@
  */
 static DEFINE_PER_CPU(unsigned long, cpu_scale);
 
-unsigned long arch_scale_freq_power(struct sched_domain *sd, int cpu)
+static unsigned long arch_scale_freq_power(struct sched_domain *sd, int cpu)
 {
 	return per_cpu(cpu_scale, cpu);
 }
@@ -68,9 +69,9 @@ struct cpu_efficiency {
  * Processors that are not defined in the table,
  * use the default SCHED_POWER_SCALE value for cpu_scale.
  */
-struct cpu_efficiency table_efficiency[] = {
-	{"arm,cortex-a15", 3891},
-	{"arm,cortex-a7",  2048},
+static struct cpu_efficiency table_efficiency[] = {
+	{"arm,cortex-a53", 3891},
+	{"arm,arm-v8",  2048}, 
 	{NULL, },
 };
 
@@ -79,9 +80,9 @@ struct cpu_capacity {
 	unsigned long capacity;
 };
 
-struct cpu_capacity *cpu_capacity;
+static struct cpu_capacity *cpu_capacity;
 
-unsigned long middle_capacity = 1;
+static unsigned long middle_capacity = 1;
 
 /*
  * Iterate all CPUs' descriptor in DT and compute the efficiency
@@ -170,7 +171,7 @@ static void __init parse_dt_topology(void)
  * boot. The update of all CPUs is in O(n^2) for heteregeneous system but the
  * function returns directly for SMP system.
  */
-void update_cpu_power(unsigned int cpu, unsigned long hwid)
+static void update_cpu_power(unsigned int cpu, unsigned long hwid)
 {
 	unsigned int idx = 0;
 
@@ -208,7 +209,7 @@ const struct cpumask *cpu_coregroup_mask(int cpu)
 	return &cpu_topology[cpu].core_sibling;
 }
 
-void update_siblings_masks(unsigned int cpuid)
+static void update_siblings_masks(unsigned int cpuid)
 {
 	struct cputopo_arm *cpu_topo, *cpuid_topo = &cpu_topology[cpuid];
 	int cpu;
@@ -268,6 +269,13 @@ void store_cpu_topology(unsigned int cpuid)
 			cpuid_topo->core_id = MPIDR_AFFINITY_LEVEL(mpidr, 0);
 			cpuid_topo->socket_id = MPIDR_AFFINITY_LEVEL(mpidr, 1);
 		}
+#if 0		
+		/*change core id in socket1 to avoid the question of load_balance */
+		if (cpuid_topo->socket_id> 0) {
+			cpuid_topo->core_id += cpuid_topo->socket_id *4;
+			cpuid_topo->socket_id = 0;
+		}
+#endif		
 	} else {
 		/*
 		 * This is an uniprocessor system
@@ -287,6 +295,140 @@ void store_cpu_topology(unsigned int cpuid)
 		cpuid, cpu_topology[cpuid].thread_id,
 		cpu_topology[cpuid].core_id,
 		cpu_topology[cpuid].socket_id, mpidr);
+}
+
+
+#ifdef CONFIG_SCHED_HMP
+
+static const char * const little_cores[] = {
+	"arm,cortex-a53",
+	NULL,
+};
+
+static bool is_little_cpu(struct device_node *cn)
+{
+	const char * const *lc;
+	for (lc = little_cores; *lc; lc++)
+		if (of_device_is_compatible(cn, *lc))
+			return true;
+	return false;
+}
+
+void __init arch_get_fast_and_slow_cpus(struct cpumask *fast,
+					struct cpumask *slow)
+{
+	struct device_node *cn = NULL;
+	int cpu;
+
+	cpumask_clear(fast);
+	cpumask_clear(slow);
+
+	/*
+	 * Use the config options if they are given. This helps testing
+	 * HMP scheduling on systems without a big.LITTLE architecture.
+	 */
+	if (strlen(CONFIG_HMP_FAST_CPU_MASK) && strlen(CONFIG_HMP_SLOW_CPU_MASK)) {
+		if (cpulist_parse(CONFIG_HMP_FAST_CPU_MASK, fast))
+			WARN(1, "Failed to parse HMP fast cpu mask!\n");
+		if (cpulist_parse(CONFIG_HMP_SLOW_CPU_MASK, slow))
+			WARN(1, "Failed to parse HMP slow cpu mask!\n");
+		return;
+	}
+
+	/*
+	 * Else, parse device tree for little cores.
+	 */
+	while ((cn = of_find_node_by_type(cn, "cpu"))) {
+
+		const u32 *mpidr;
+		int len;
+
+		mpidr = of_get_property(cn, "reg", &len);
+		if (!mpidr || len != 4) {
+			pr_err("* %s missing reg property\n", cn->full_name);
+			continue;
+		}
+
+		cpu = get_logical_index(be32_to_cpup(mpidr));
+		if (cpu == -EINVAL) {
+			pr_err("couldn't get logical index for mpidr %x\n",
+							be32_to_cpup(mpidr));
+			break;
+		}
+
+		if (is_little_cpu(cn))
+			cpumask_set_cpu(cpu, slow);
+		else
+			cpumask_set_cpu(cpu, fast);
+	}
+
+	if (!cpumask_empty(fast) && !cpumask_empty(slow))
+		return;
+
+	/*
+	 * We didn't find both big and little cores so let's call all cores
+	 * fast as this will keep the system running, with all cores being
+	 * treated equal.
+	 */
+	cpumask_setall(fast);
+	cpumask_clear(slow);
+}
+
+struct cpumask hmp_slow_cpu_mask;
+
+void __init arch_get_hmp_domains(struct list_head *hmp_domains_list)
+{
+	struct cpumask hmp_fast_cpu_mask;
+	struct hmp_domain *domain;
+
+	arch_get_fast_and_slow_cpus(&hmp_fast_cpu_mask, &hmp_slow_cpu_mask);
+
+	/*
+	 * Initialize hmp_domains
+	 * Must be ordered with respect to compute capacity.
+	 * Fastest domain at head of list.
+	 */
+	if(!cpumask_empty(&hmp_slow_cpu_mask)) {
+		domain = (struct hmp_domain *)
+			kmalloc(sizeof(struct hmp_domain), GFP_KERNEL);
+		cpumask_copy(&domain->possible_cpus, &hmp_slow_cpu_mask);
+		cpumask_and(&domain->cpus, cpu_online_mask, &domain->possible_cpus);
+		list_add(&domain->hmp_domains, hmp_domains_list);
+	}
+	domain = (struct hmp_domain *)
+		kmalloc(sizeof(struct hmp_domain), GFP_KERNEL);
+	cpumask_copy(&domain->possible_cpus, &hmp_fast_cpu_mask);
+	cpumask_and(&domain->cpus, cpu_online_mask, &domain->possible_cpus);
+	list_add(&domain->hmp_domains, hmp_domains_list);
+}
+#endif /* CONFIG_SCHED_HMP */
+
+
+/*
+ * cluster_to_logical_mask - return cpu logical mask of CPUs in a cluster
+ * @socket_id:		cluster HW identifier
+ * @cluster_mask:	the cpumask location to be initialized, modified by the
+ *			function only if return value == 0
+ *
+ * Return:
+ *
+ * 0 on success
+ * -EINVAL if cluster_mask is NULL or there is no record matching socket_id
+ */
+int cluster_to_logical_mask(unsigned int socket_id, cpumask_t *cluster_mask)
+{
+	int cpu;
+
+	if (!cluster_mask)
+		return -EINVAL;
+
+	for_each_online_cpu(cpu)
+		if (socket_id == topology_physical_package_id(cpu)) {
+			cpumask_copy(cluster_mask, topology_core_cpumask(cpu));
+			return 0;
+		}
+
+	return -EINVAL;
 }
 
 /*

@@ -1,13 +1,4 @@
-/*
- * composite.c - infrastructure for Composite USB Gadgets
- *
- * Copyright (C) 2006-2008 David Brownell
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- */
+
 
 /* #define VERBOSE_DEBUG */
 
@@ -330,6 +321,7 @@ int usb_interface_id(struct usb_configuration *config,
 	unsigned id = config->next_interface_id;
 
 	if (id < MAX_CONFIG_INTERFACES) {
+		printk(KERN_INFO "%s:%d\n", function->name, id);
 		config->interface[id] = function;
 		config->next_interface_id = id + 1;
 		return id;
@@ -812,7 +804,7 @@ done:
 }
 EXPORT_SYMBOL_GPL(usb_add_config);
 
-static void remove_config(struct usb_composite_dev *cdev,
+static void unbind_config(struct usb_composite_dev *cdev,
 			      struct usb_configuration *config)
 {
 	while (!list_empty(&config->functions)) {
@@ -827,7 +819,6 @@ static void remove_config(struct usb_composite_dev *cdev,
 			/* may free memory for "f" */
 		}
 	}
-	list_del(&config->list);
 	if (config->unbind) {
 		DBG(cdev, "unbind config '%s'/%p\n", config->label, config);
 		config->unbind(config);
@@ -854,9 +845,12 @@ void usb_remove_config(struct usb_composite_dev *cdev,
 	if (cdev->config == config)
 		reset_config(cdev);
 
+	if (!list_empty(&cdev->configs))
+		list_del(&config->list);
+
 	spin_unlock_irqrestore(&cdev->lock, flags);
 
-	remove_config(cdev, config);
+	unbind_config(cdev, config);
 }
 
 /*-------------------------------------------------------------------------*/
@@ -960,15 +954,6 @@ static int get_string(struct usb_composite_dev *cdev,
 		return s->bLength;
 	}
 
-	list_for_each_entry(uc, &cdev->gstrings, list) {
-		struct usb_gadget_strings **sp;
-
-		sp = get_containers_gs(uc);
-		len = lookup_string(sp, buf, language, id);
-		if (len > 0)
-			return len;
-	}
-
 	/* String IDs are device-scoped, so we look up each string
 	 * table we're told about.  These lookups are infrequent;
 	 * simpler-is-better here.
@@ -991,6 +976,15 @@ static int get_string(struct usb_composite_dev *cdev,
 			if (len > 0)
 				return len;
 		}
+	}
+
+	list_for_each_entry(uc, &cdev->gstrings, list) {
+		struct usb_gadget_strings **sp;
+
+		sp = get_containers_gs(uc);
+		len = lookup_string(sp, buf, language, id);
+		if (len > 0)
+			return len;
 	}
 	return -EINVAL;
 }
@@ -1525,7 +1519,8 @@ static void __composite_unbind(struct usb_gadget *gadget, bool unbind_driver)
 		struct usb_configuration	*c;
 		c = list_first_entry(&cdev->configs,
 				struct usb_configuration, list);
-		remove_config(cdev, c);
+		list_del(&c->list);
+		unbind_config(cdev, c);
 	}
 	if (cdev->driver->unbind && unbind_driver)
 		cdev->driver->unbind(cdev);
